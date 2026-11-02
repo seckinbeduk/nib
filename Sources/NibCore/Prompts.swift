@@ -14,7 +14,9 @@ public enum Prompts {
     public static func composeInstructions(language: String?) -> String {
         """
         You write git commit messages from staged changes.
-        type: the kind of change, one of feat, fix, refactor, perf, docs, test, build, ci, chore, style.
+        type: feat = a new capability or option users can use; fix = a bug fix; refactor = restructuring that \
+        changes no behavior; perf = faster or lighter; docs, test, build, ci = only those areas; \
+        chore = upkeep with no behavior change (versions, config, cleanup); style = formatting only.
         scope: a short lowercase name for the area changed, or empty.
         subject: imperative mood, at most 60 characters, no period. Example: "add retry to the upload client".
         bullets: up to 4 short points on the important changes and why. Leave empty for a small change.
