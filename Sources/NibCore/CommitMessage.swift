@@ -30,12 +30,20 @@ public enum MessageFormatter {
     public static let headerLimit = 72
     public static let bodyWidth = 72
 
-    public static func format(_ draft: CommitDraft, style: CommitStyle, ticket: String? = nil) -> String {
+    /// `paths` are the changed files; they tell a subject that only names a file ("update ci workflow")
+    /// from one that says what changed.
+    public static func format(_ draft: CommitDraft, style: CommitStyle, ticket: String? = nil,
+                              paths: [String] = []) -> String {
         var subject = cleanSubject(draft.subject)
-        // A small model sometimes answers "add track, detect, reflect, modify": a verb and a list
-        // of verbs. The first bullet is written in the imperative too and says something; use it.
-        if looksLikeVerbList(subject), let first = draft.bullets.map(cleanBullet).first(where: { !$0.isEmpty }) {
-            subject = cleanSubject(first)
+        // A small model sometimes lists changes ("add model clarity, error guidance, config clarity")
+        // or names only the file ("update ci workflow"). The first bullet is written in the imperative
+        // too and usually says something; use it, unless it has the same problem.
+        let isWeak = { (text: String) in
+            looksLikeList(text) || looksVague(text, paths: paths, scope: draft.scope, type: draft.type)
+        }
+        if isWeak(subject), let first = draft.bullets.map(cleanBullet).first(where: { !$0.isEmpty }) {
+            let candidate = cleanSubject(first)
+            if !isWeak(candidate) { subject = candidate }
         }
         let header: String
         if style == .plain {
@@ -68,17 +76,55 @@ public enum MessageFormatter {
 
     // MARK: - Cleanup
 
-    /// "add track, detect, reflect, modify": three or more comma-separated items after the verb,
-    /// which are single words or start with verbs.
-    static func looksLikeVerbList(_ subject: String) -> Bool {
+    /// "add track, detect, reflect, modify" or "add model clarity, error guidance, config clarity":
+    /// three or more comma-separated items after the verb, with no "and"/"or" before the last one.
+    /// A sentence that joins its last item ("fix crash, hang and leak") is written, not dumped.
+    static func looksLikeList(_ subject: String) -> Bool {
         let words = subject.lowercased().split(separator: " ")
         guard words.count >= 3 else { return false }
         let items = words.dropFirst().joined(separator: " ")
             .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard items.count >= 3 else { return false }
-        let verbs = Set(Prompts.imperativeVerbs)
-        let verbItems = items.filter { item in item.split(separator: " ").first.map { verbs.contains(String($0)) } ?? false }
-        return verbItems.count >= 2 || items.allSatisfy { !$0.contains(" ") }
+        guard items.count >= 3, let last = items.last else { return false }
+        let lastWords = last.split(separator: " ")
+        return !lastWords.contains("and") && !lastWords.contains("or")
+    }
+
+    /// Verbs that say nothing on their own.
+    static let genericVerbs: Set<String> = ["update", "change", "modify", "improve", "adjust", "tweak"]
+    /// Words that add nothing to a generic verb.
+    static let fillerWords: Set<String> = [
+        "a", "an", "the", "file", "code", "config", "configuration", "setting", "some", "minor", "various", "misc",
+    ]
+
+    /// "update ci workflow": a generic verb followed only by words from the changed paths, the scope,
+    /// the type or filler. It names what was touched, not what changed.
+    static func looksVague(_ subject: String, paths: [String], scope: String = "", type: String = "") -> Bool {
+        let words = subject.lowercased().split(separator: " ").map(String.init)
+        guard let verb = words.first, genericVerbs.contains(verb) else { return false }
+        let known = Set((paths + [scope, type]).flatMap(tokens)).union(fillerWords)
+        return words.dropFirst().flatMap(tokens).allSatisfy(known.contains)
+    }
+
+    /// Lowercase word stems for comparing a subject with paths: extensions dropped ("ci.yml" → "ci"),
+    /// split on separators, plurals folded ("workflows" → "workflow").
+    static func tokens(_ text: String) -> [String] {
+        text.lowercased()
+            .split(whereSeparator: { $0 == "/" || $0 == " " || $0 == "`" })
+            .flatMap { part -> [Substring] in
+                var part = Substring(part)
+                if let dot = part.lastIndex(of: "."), dot != part.startIndex {
+                    let ext = part[part.index(after: dot)...]
+                    if (1...5).contains(ext.count), ext.allSatisfy(\.isLetter) { part = part[..<dot] }
+                }
+                return part.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            }
+            .map { singular(String($0)) }
+    }
+
+    static func singular(_ word: String) -> String {
+        if word.count > 4, word.hasSuffix("ies") { return String(word.dropLast(3)) + "y" }
+        if word.count > 3, word.hasSuffix("s"), !word.hasSuffix("ss") { return String(word.dropLast()) }
+        return word
     }
 
     static func cleanSubject(_ raw: String) -> String {

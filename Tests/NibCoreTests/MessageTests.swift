@@ -199,9 +199,56 @@ struct SubjectRepairTests {
     }
 
     @Test func normalSubjectsAreLeftAlone() {
-        #expect(!MessageFormatter.looksLikeVerbList("add retry to the upload client"))
-        #expect(!MessageFormatter.looksLikeVerbList("fix crash, hang and leak in the parser on launch"))
-        #expect(MessageFormatter.looksLikeVerbList("add track, detect, reflect, modify"))
-        #expect(MessageFormatter.looksLikeVerbList("update parser, planner, hints"))
+        #expect(!MessageFormatter.looksLikeList("add retry to the upload client"))
+        #expect(!MessageFormatter.looksLikeList("fix crash, hang and leak in the parser on launch"))
+        #expect(!MessageFormatter.looksLikeList("add tests for login, signup and logout"))
+        #expect(!MessageFormatter.looksLikeList("support macOS, iOS, or visionOS"))
+        #expect(MessageFormatter.looksLikeList("add track, detect, reflect, modify"))
+        #expect(MessageFormatter.looksLikeList("update parser, planner, hints"))
+    }
+
+    // nib 187ba0c: a list of noun phrases, not one change.
+    @Test func nounListSubjectIsReplacedByTheFirstBullet() {
+        let draft = CommitDraft(type: "feat", subject: "add model clarity, error guidance, config clarity, platform update",
+                                bullets: ["Add `auto` case to `Engine` enum to clarify model origin",
+                                          "Fix `HearthError` `.notRunning` to include start instructions"])
+        #expect(MessageFormatter.looksLikeList(draft.subject))
+        let message = MessageFormatter.format(draft, style: .conventional)
+        #expect(message.hasPrefix("feat: add `auto` case to `Engine` enum to clarify model origin\n"))
+        #expect(message.contains("- Fix `HearthError` `.notRunning` to include start instructions"))
+    }
+
+    // nib a9d9187: a generic verb and the file's name, nothing about what changed.
+    @Test func fileNameSubjectIsReplacedByTheFirstBullet() {
+        let paths = [".github/workflows/ci.yml"]
+        let draft = CommitDraft(type: "ci", scope: "workflows", subject: "update ci workflow",
+                                bullets: ["Update CI runner to xcode-27", "Upgrade checkout action to v5"])
+        #expect(MessageFormatter.looksVague(draft.subject, paths: paths, scope: draft.scope, type: draft.type))
+        let message = MessageFormatter.format(draft, style: .conventional, paths: paths)
+        #expect(message.hasPrefix("ci(workflows): update CI runner to xcode-27\n"))
+        #expect(message.contains("- Upgrade checkout action to v5"))
+    }
+
+    @Test func vagueMatchingFoldsPluralsAndExtensions() {
+        #expect(MessageFormatter.looksVague("update workflows", paths: [".github/workflows/ci.yml"]))
+        #expect(MessageFormatter.looksVague("update ci.yml", paths: [".github/workflows/ci.yml"]))
+        #expect(MessageFormatter.looksVague("update the README", paths: ["README.md"]))
+        #expect(MessageFormatter.looksVague("change parser config", paths: ["Sources/Parsers/Parser.swift"]))
+    }
+
+    @Test func specificSubjectsAreNotVague() {
+        let paths = ["Sources/Upload/RetryPolicy.swift"]
+        #expect(!MessageFormatter.looksVague("update the retry limit to 5", paths: paths))
+        #expect(!MessageFormatter.looksVague("add retry to the upload client", paths: paths))   // not a generic verb
+        #expect(!MessageFormatter.looksVague("update ci workflow", paths: []))                  // nothing to compare with
+        #expect(!MessageFormatter.looksVague("update CI runner to xcode-27", paths: [".github/workflows/ci.yml"], type: "ci"))
+    }
+
+    @Test func weakSubjectStaysWhenThereIsNoBetterBullet() {
+        let paths = [".github/workflows/ci.yml"]
+        let noBullets = CommitDraft(type: "ci", subject: "update ci workflow")
+        #expect(MessageFormatter.format(noBullets, style: .conventional, paths: paths) == "ci: update ci workflow")
+        let vagueBullet = CommitDraft(type: "ci", subject: "update ci workflow", bullets: ["Update workflows"])
+        #expect(MessageFormatter.format(vagueBullet, style: .conventional, paths: paths).hasPrefix("ci: update ci workflow\n"))
     }
 }
