@@ -1,5 +1,7 @@
 import ArgumentParser
 import Foundation
+import FoundationModels
+import HearthKit
 import NibCore
 
 @main
@@ -7,7 +9,7 @@ struct Nib: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "nib",
         abstract: "Commit messages written on your Mac by Apple Intelligence. Your code never leaves the machine.",
-        version: "0.2.1",
+        version: "0.3.0",
         subcommands: [Generate.self, Commit.self, HookCommand.self, Doctor.self],
         defaultSubcommand: Generate.self
     )
@@ -23,7 +25,7 @@ struct MessageOptions: ParsableArguments {
     @Option(help: "Give up after this many seconds. Default: git config nib.timeout, then 120.")
     var timeout: Double?
 
-    @Option(help: "apple, hearth or auto (Apple Intelligence, else Hearth). Default: git config nib.engine, then apple.")
+    @Option(help: "auto (Hearth when it's running, else Apple Intelligence), apple or hearth. Default: git config nib.engine, then auto.")
     var engine: String?
 
     @Flag(name: .shortAndLong, help: "Show what nib is doing.")
@@ -191,15 +193,26 @@ struct Doctor: AsyncParsableCommand {
         if let reason = AppleIntelligence.unavailableReason() {
             row("Apple Intelligence", "✗ \(reason)")
         } else {
-            row("Apple Intelligence", "✓ ready (\(AppleIntelligenceModel().contextTokens) token context)")
+            row("Apple Intelligence", "✓ ready (\(SystemLanguageModel.default.contextSize) token context)")
         }
-        if let hearth = await HearthClient.discover(appName: "nib", appVersion: Nib.configuration.version) {
-            row("Hearth", "✓ running at \(hearth.baseURL.absoluteString)" + (hearth.model.map { ", \($0)" } ?? ", no model loaded"))
+        let hearth = await HearthModel.status()
+        if let hearth {
+            row("Hearth", "✓ running \(hearth.version ?? "")" + (hearth.localModel.map { ", local model \($0)" } ?? ", no local model loaded"))
         } else {
             row("Hearth", "– not running (optional: github.com/seckinbeduk/hearth)")
         }
-        let engine = (try? Runner.engine(git: Git(), options: try MessageOptions.parse([])))?.rawValue ?? "?"
-        row("engine", engine + (engine == "apple" ? "" : " (git config nib.engine)"))
+        let engine = (try? Runner.engine(git: Git(), options: try MessageOptions.parse([]))) ?? .auto
+        let uses: String
+        switch engine {
+        case .apple: uses = "Apple Intelligence"
+        case .hearth, .auto:
+            if hearth != nil {
+                uses = Runner.hearthBackend(git: Git()) == .local ? "Hearth, local model" : "Apple Intelligence through Hearth"
+            } else {
+                uses = engine == .hearth ? "nothing: Hearth isn't running" : "Apple Intelligence"
+            }
+        }
+        row("engine", "\(engine.rawValue) → \(uses)")
 
         guard git.isRepository() else {
             row("git repository", "– not in one (run nib inside a repo)")
@@ -259,40 +272,40 @@ enum Runner {
     }
 
     static func engine(git: Git, options: MessageOptions) throws -> Engine {
-        let value = options.engine ?? git.config("nib.engine") ?? "apple"
+        let value = options.engine ?? git.config("nib.engine") ?? "auto"
         guard let engine = Engine(rawValue: value.lowercased()) else {
-            throw ValidationError("Unknown engine \"\(value)\". Use apple, hearth or auto.")
+            throw ValidationError("Unknown engine \"\(value)\". Use auto, apple or hearth.")
         }
         return engine
     }
 
-    /// Apple Intelligence or Hearth, as configured.
+    /// Which of Hearth's models to ask: Apple Intelligence (default) or its local model.
+    static func hearthBackend(git: Git) -> HearthModel.Backend {
+        git.config("nib.hearthModel")?.lowercased() == "hearth" ? .local : .appleIntelligence
+    }
+
+    /// Hearth when it's running (so usage shows up there), Apple Intelligence directly otherwise.
     static func commitModel(git: Git, options: MessageOptions,
                             log: @Sendable (String) -> Void) async throws -> any CommitModel {
         let engine = try engine(git: git, options: options)
-        let appleProblem = engine == .hearth ? nil : AppleIntelligence.unavailableReason()
-        if engine == .apple || (engine == .auto && appleProblem == nil) {
-            if let appleProblem {
-                throw NibError.modelUnavailable(appleProblem + "\nNo Apple Intelligence? nib can use Hearth's local model instead: "
-                                                + "git config --global nib.engine hearth")
-            }
-            log("engine: Apple Intelligence")
-            return AppleIntelligenceModel()
+        if engine != .apple, let status = await HearthModel.status() {
+            let backend = hearthBackend(git: git)
+            let serving = backend == .local ? (status.localModel ?? "no local model loaded, so Apple Intelligence") : "Apple Intelligence"
+            log("engine: Hearth \(status.version ?? "") (\(serving))")
+            return CommitModels.hearth(backend)
         }
-        let hearthModel = git.config("nib.hearthModel") ?? "hearth"
-        guard let client = await HearthClient.discover(appName: "nib", appVersion: Nib.configuration.version,
-                                                       requestedModel: hearthModel) else {
-            if let appleProblem { throw NibError.modelUnavailable(appleProblem + " " + HearthError.notRunning.localizedDescription) }
-            throw HearthError.notRunning
+        if engine == .hearth { throw HearthError.notRunning }
+        if let problem = AppleIntelligence.unavailableReason() {
+            throw NibError.modelUnavailable(problem + "\nNo Apple Intelligence? Run Hearth (github.com/seckinbeduk/hearth) with a local model; nib uses it automatically.")
         }
-        log("engine: Hearth at \(client.baseURL.absoluteString) (\(client.servingDescription))")
-        return HearthCommitModel(client: client)
+        log("engine: Apple Intelligence")
+        return CommitModels.appleIntelligence()
     }
 
     static func showPlan(git: Git) async throws {
         let files = DiffParser.parse(try git.stagedDiff())
         guard !files.isEmpty else { throw NibError.nothingStaged }
-        let generator = Generator(model: AppleIntelligenceModel())
+        let generator = Generator(model: CommitModels.appleIntelligence())
         let plan = Planner.plan(files, budgetChars: await generator.budgetChars(for: files))
 
         print("\(files.count) file(s) · \(plan.mode.rawValue) · \(plan.chunks.count) chunk(s) · budget \(plan.budgetChars) chars per prompt\n")

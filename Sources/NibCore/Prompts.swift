@@ -37,11 +37,6 @@ public enum Prompts {
     install integrate detect
     """.split(separator: " ").map(String.init)
 
-    /// "(add|Add|fix|Fix|…) [^\n]+": a subject that starts with one of those verbs.
-    public static var imperativePattern: String {
-        "(" + imperativeVerbs.flatMap { [$0, $0.prefix(1).uppercased() + $0.dropFirst()] }.joined(separator: "|") + ") [^\\n]+"
-    }
-
     public static func composePrompt(overview: String, diff: String?, hints: [String]) -> String {
         var prompt = "Changed files:\n\(overview)"
         if let diff, !diff.isEmpty { prompt += "\n\nDiff:\n\(diff)" }

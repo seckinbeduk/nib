@@ -19,7 +19,7 @@ lets any app use it. nib is a small, native Swift tool that does exactly one thi
 
 ## Install
 
-Requires macOS 26 or later on Apple silicon, with Apple Intelligence turned on, and Xcode 26 or later.
+Requires macOS 27 or later on Apple silicon, with Apple Intelligence turned on (or [Hearth](https://github.com/seckinbeduk/hearth) running), and Xcode 27 or later. On macOS 26, use [nib 0.2.1](https://github.com/seckinbeduk/nib/releases/tag/v0.2.1).
 
 ```sh
 git clone https://github.com/seckinbeduk/nib.git
@@ -101,8 +101,8 @@ Settings live in git config, per repo or with `--global`:
 | `nib.ticket` | `true`, `false`: add `Refs: ABC-123` when the branch name has a ticket ID | `true` |
 | `nib.timeout` | seconds | `120` |
 | `nib.verbose` | `true` to show progress in the hook | `false` |
-| `nib.engine` | `apple`, `hearth`, `auto` | `apple` |
-| `nib.hearthModel` | `hearth` (its local model) or `apple-intelligence` (Apple's, counted in Hearth) | `hearth` |
+| `nib.engine` | `auto` (Hearth when it's running, else Apple Intelligence), `apple`, `hearth` | `auto` |
+| `nib.hearthModel` | `apple-intelligence` (Apple's model, counted in Hearth) or `hearth` (Hearth's local model) | `apple-intelligence` |
 
 ```sh
 git config --global nib.language tr
@@ -110,19 +110,20 @@ git config --global nib.language tr
 
 Command-line flags `--style`, `--language`, `--timeout` and `--verbose` override these for one run.
 
-## No Apple Intelligence? Use Hearth
+## Works with Hearth
 
-[Hearth](https://github.com/seckinbeduk/hearth) runs a local model on your Mac. nib can use it
-instead of Apple Intelligence, so it works on Macs and in regions without Apple Intelligence,
-and your code still never leaves the machine.
+[Hearth](https://github.com/seckinbeduk/hearth) runs models on your Mac and shows which app uses
+how much. When it's running, nib talks to Apple Intelligence through it, with no slowdown, so
+every commit shows up in Hearth's **Who's using it**. When it isn't, nib uses Apple Intelligence
+directly. Nothing to configure; nib uses [HearthKit](https://github.com/seckinbeduk/hearthkit) for this.
 
 ```sh
-git config --global nib.engine hearth   # always Hearth
-git config --global nib.engine auto     # Apple Intelligence, Hearth when it isn't available
+git config --global nib.hearthModel hearth   # use Hearth's local model (Qwen, Gemma…) instead
+git config --global nib.engine apple         # never use Hearth
 ```
 
-nib finds Hearth by itself and shows up in Hearth's **Who's using it**, so you can see how much it uses.
-`nib doctor` shows whether Hearth is running.
+No Apple Intelligence on this Mac? Run Hearth with a local model and nib uses that.
+`nib doctor` shows what nib will use.
 
 ## Develop
 

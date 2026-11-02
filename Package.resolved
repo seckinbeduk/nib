@@ -1,6 +1,15 @@
 {
-  "originHash" : "345a457811cbd5f7a63299e8e6fd3cb33ea677afdf4099bef6efaf7b4f1378ac",
+  "originHash" : "4992af50c289102a3ddb1953c989227ee491d419c3cce531252787a24756319c",
   "pins" : [
+    {
+      "identity" : "hearthkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/seckinbeduk/hearthkit",
+      "state" : {
+        "revision" : "adde5eb5b76f5a37663ac413d6d8c4a39796ea03",
+        "version" : "0.1.0"
+      }
+    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

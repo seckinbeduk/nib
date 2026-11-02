@@ -31,7 +31,12 @@ public enum MessageFormatter {
     public static let bodyWidth = 72
 
     public static func format(_ draft: CommitDraft, style: CommitStyle, ticket: String? = nil) -> String {
-        let subject = cleanSubject(draft.subject)
+        var subject = cleanSubject(draft.subject)
+        // A small model sometimes answers "add track, detect, reflect, modify": a verb and a list
+        // of verbs. The first bullet is written in the imperative too and says something; use it.
+        if looksLikeVerbList(subject), let first = draft.bullets.map(cleanBullet).first(where: { !$0.isEmpty }) {
+            subject = cleanSubject(first)
+        }
         let header: String
         if style == .plain {
             header = clip(capitalizeFirst(subject), to: headerLimit)
@@ -62,6 +67,19 @@ public enum MessageFormatter {
     }
 
     // MARK: - Cleanup
+
+    /// "add track, detect, reflect, modify": three or more comma-separated items after the verb,
+    /// which are single words or start with verbs.
+    static func looksLikeVerbList(_ subject: String) -> Bool {
+        let words = subject.lowercased().split(separator: " ")
+        guard words.count >= 3 else { return false }
+        let items = words.dropFirst().joined(separator: " ")
+            .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard items.count >= 3 else { return false }
+        let verbs = Set(Prompts.imperativeVerbs)
+        let verbItems = items.filter { item in item.split(separator: " ").first.map { verbs.contains(String($0)) } ?? false }
+        return verbItems.count >= 2 || items.allSatisfy { !$0.contains(" ") }
+    }
 
     static func cleanSubject(_ raw: String) -> String {
         var subject = collapseWhitespace(raw.components(separatedBy: .newlines).first ?? raw)

@@ -177,46 +177,31 @@ struct HookTests {
     }
 }
 
-@Suite("Hearth replies")
-struct JSONReplyTests {
-    struct Idea: Decodable, Equatable { var title: String? }
-
-    @Test func plainJSON() {
-        #expect(JSONReply.decode(Idea.self, from: #"{"title": "Flight Booking"}"#) == Idea(title: "Flight Booking"))
-    }
-
-    @Test func wrappedInFencesAndThinking() {
-        let reply = "<think>\nThe user wants a title.\n</think>\nSure:\n```json\n{\"title\": \"Tax Return 2025\"}\n```"
-        #expect(JSONReply.decode(Idea.self, from: reply) == Idea(title: "Tax Return 2025"))
-    }
-
-    @Test func noJSON() {
-        #expect(JSONReply.decode(Idea.self, from: "I can't help with that.") == nil)
-    }
-
-    @Test func engines() {
-        #expect(Engine(rawValue: "hearth") == .hearth)
+@Suite("Engine")
+struct EngineTests {
+    @Test func names() {
         #expect(Engine(rawValue: "auto") == .auto)
+        #expect(Engine(rawValue: "hearth") == .hearth)
+        #expect(Engine(rawValue: "apple") == .apple)
         #expect(Engine(rawValue: "cloud") == nil)
     }
 }
 
-@Suite("Hearth schema")
-struct HearthSchemaTests {
-    @Test func verbPatternAcceptsImperativesOnly() throws {
-        let regex = try Regex(Prompts.imperativePattern)
-        #expect("add retry to the uploader".wholeMatch(of: regex) != nil)
-        #expect("Fix crash on launch".wholeMatch(of: regex) != nil)
-        #expect("unified diff parser".wholeMatch(of: regex) == nil)
-        #expect("added retry".wholeMatch(of: regex) == nil)
+@Suite("Subject repair")
+struct SubjectRepairTests {
+    @Test func verbListSubjectIsReplacedByTheFirstBullet() {
+        let draft = CommitDraft(type: "feat", scope: "", subject: "add track, detect, reflect, modify",
+                                bullets: ["Add version and localModel tracking to HearthConnection", "Implement probe function"])
+        let message = MessageFormatter.format(draft, style: .conventional)
+        #expect(message.hasPrefix("feat: add version and localModel tracking to HearthConnection"))
+        #expect(!message.contains("- Add version and localModel tracking"))   // not repeated in the body
+        #expect(message.contains("- Implement probe function"))
     }
 
-    @Test func englishSubjectIsAVerbFromTheListThenTheRest() {
-        let english = HearthCommitModel.schema(imperativeEnglish: true)
-        let turkish = HearthCommitModel.schema(imperativeEnglish: false)
-        #expect((english["required"] as? [String]) == ["bullets", "verb", "rest", "type", "scope"])
-        #expect((turkish["required"] as? [String]) == ["bullets", "subject", "type", "scope"])
-        let verb = (english["properties"] as? [String: Any])?["verb"] as? [String: Any]
-        #expect((verb?["enum"] as? [String])?.contains("add") == true)
+    @Test func normalSubjectsAreLeftAlone() {
+        #expect(!MessageFormatter.looksLikeVerbList("add retry to the upload client"))
+        #expect(!MessageFormatter.looksLikeVerbList("fix crash, hang and leak in the parser on launch"))
+        #expect(MessageFormatter.looksLikeVerbList("add track, detect, reflect, modify"))
+        #expect(MessageFormatter.looksLikeVerbList("update parser, planner, hints"))
     }
 }
