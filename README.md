@@ -19,11 +19,18 @@ lets any app use it. nib is a small, native Swift tool that does exactly one thi
 
 ## Install
 
-Requires macOS 27 or later on Apple silicon, with Apple Intelligence turned on (or [Hearth](https://github.com/seckinbeduk/hearth) running), and Xcode 27 or later. On macOS 26, use [nib 0.2.1](https://github.com/seckinbeduk/nib/releases/tag/v0.2.1).
+Needs an Apple silicon Mac with Apple Intelligence turned on, or [Hearth](https://github.com/seckinbeduk/hearth) running.
+Pick the version for your macOS:
+
+| macOS | nib | Builds with | What you get |
+|---|---|---|---|
+| 27 or later | [latest](https://github.com/seckinbeduk/nib/releases/latest) (0.3.0+) | Xcode 27 | Everything, and Hearth is used automatically when it's running |
+| 26 | [0.2.1](https://github.com/seckinbeduk/nib/releases/tag/v0.2.1) | Xcode 26 | Everything except automatic Hearth; set `nib.engine hearth` to use it |
 
 ```sh
 git clone https://github.com/seckinbeduk/nib.git
 cd nib
+git checkout v0.2.1   # macOS 26 only
 ./install.sh
 ```
 
