@@ -84,6 +84,15 @@ struct HintsTests {
         #expect(Hints.suggestedType(for: Fixture.files(Fixture.added("Sources/App.swift", lines: ["x"]), Fixture.added("README.md", lines: ["y"]))) == "feat")
     }
 
+    @Test func pathsOverruleTheModelOnlyWhenCertain() {
+        #expect(Hints.reconcile(modelType: "feat", suggested: "docs") == "docs")
+        #expect(Hints.reconcile(modelType: "chore", suggested: "test") == "test")
+        #expect(Hints.reconcile(modelType: "refactor", suggested: "feat") == "feat")
+        #expect(Hints.reconcile(modelType: "chore", suggested: "feat") == "chore")
+        #expect(Hints.reconcile(modelType: "fix", suggested: nil) == "fix")
+        #expect(Hints.reconcile(modelType: "chore", suggested: "build") == "chore")
+    }
+
     @Test func scopeFromCommonDirectory() {
         #expect(Hints.suggestedScope(for: Fixture.files(Fixture.modified("packages/api/src/a.ts"), Fixture.modified("packages/api/src/b.ts"))) == "api")
         #expect(Hints.suggestedScope(for: Fixture.files(Fixture.modified("Sources/NibCore/Planner.swift"))) == "nibcore")

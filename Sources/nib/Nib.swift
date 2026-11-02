@@ -51,11 +51,14 @@ struct Generate: AsyncParsableCommand {
 // MARK: - nib commit
 
 struct Commit: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Write the message and commit. Opens your editor so you can review it first.")
+    static let configuration = CommandConfiguration(
+        abstract: "Write the message, confirm it in the terminal, and commit.",
+        discussion: "Shows the message and asks: Enter to commit, e to edit it in your git editor, r to write a new one, n to cancel."
+    )
 
     @OptionGroup var options: MessageOptions
 
-    @Flag(name: .shortAndLong, help: "Commit right away, without opening the editor.")
+    @Flag(name: .shortAndLong, help: "Commit right away, without asking.")
     var yes = false
 
     @Argument(parsing: .postTerminator, help: "Extra arguments for git commit, after --.")
@@ -63,12 +66,39 @@ struct Commit: AsyncParsableCommand {
 
     mutating func run() async throws {
         let git = Git()
-        let result = try await Runner.generate(git: git, options: options, log: Runner.logger(options.verbose))
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("nib-\(UUID().uuidString).txt")
-        try result.message.write(to: file, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: file) }
+        let log = Runner.logger(options.verbose)
+        var message = try await Runner.generate(git: git, options: options, log: log).message
 
-        let arguments = ["commit"] + (yes ? [] : ["--edit"]) + ["--file", file.path] + gitArguments
+        if !yes {
+            guard isatty(STDIN_FILENO) != 0 else {
+                throw ValidationError("Not running in a terminal. Use `nib commit -y` to commit without asking.")
+            }
+            ask: while true {
+                print("\n" + message.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(separator: "\n") + "\n")
+                print("Commit? [Y]es / [e]dit / [r]egenerate / [n]o: ", terminator: "")
+                let answer = (readLine() ?? "n").trimmingCharacters(in: .whitespaces).lowercased()
+                switch answer {
+                case "", "y", "yes":
+                    break ask
+                case "e", "edit":
+                    try commit(message, edit: true)
+                    return
+                case "r", "regenerate":
+                    message = try await Runner.generate(git: git, options: options, log: log).message
+                default:
+                    print("Nothing committed.")
+                    return
+                }
+            }
+        }
+        try commit(message, edit: false)
+    }
+
+    func commit(_ message: String, edit: Bool) throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("nib-\(UUID().uuidString).txt")
+        try message.write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let arguments = ["commit"] + (edit ? ["--edit"] : []) + ["--file", file.path] + gitArguments
         let status = Runner.passthrough(arguments)
         if status != 0 { throw ExitCode(status) }
     }

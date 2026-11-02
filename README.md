@@ -44,13 +44,17 @@ Run `nib doctor` to check everything is in place.
 
 ```sh
 nib                  # print a message for the staged changes
-nib commit           # write it, open your editor to review, then commit
-nib commit -y        # commit without the editor
+nib commit           # write it, confirm in the terminal (Enter / e / r / n), commit
+nib commit -y        # commit without asking
 nib hook install     # from now on, `git commit` opens with the message already written
 nib generate --plan  # show how a big diff would be split, without calling the model
 ```
 
-With the hook installed, `git commit` works as always, the message is just already there.
+Prefer to stay in the terminal? `nib commit` shows the message and asks before committing:
+Enter commits, `e` opens your git editor, `r` writes a new one, `n` cancels. A git alias makes it
+feel built in: `git config --global alias.ai '!nib commit'`, then `git ai`.
+
+Prefer your editor? With the hook installed, `git commit` works as always, the message is just already there.
 `git commit -m "…"`, merges, amends and templates are left alone.
 
 ## How it handles big diffs

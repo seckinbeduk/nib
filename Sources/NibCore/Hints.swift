@@ -17,6 +17,19 @@ public enum Hints {
         return nil
     }
 
+    /// The model's type, unless the paths say otherwise beyond doubt.
+    public static func reconcile(modelType: String, suggested: String?) -> String {
+        let suggested = suggested ?? ""
+        switch suggested {
+        case "docs", "test", "ci":
+            return suggested
+        case "feat" where ["refactor", "fix", "style", "perf"].contains(modelType.lowercased()):
+            return "feat"   // brand-new files can't be refactored or fixed
+        default:
+            return modelType
+        }
+    }
+
     static func isDocs(_ path: String) -> Bool {
         let lower = path.lowercased()
         let name = lower.split(separator: "/").last.map(String.init) ?? lower
