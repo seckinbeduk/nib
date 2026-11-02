@@ -200,3 +200,23 @@ struct JSONReplyTests {
         #expect(Engine(rawValue: "cloud") == nil)
     }
 }
+
+@Suite("Hearth schema")
+struct HearthSchemaTests {
+    @Test func verbPatternAcceptsImperativesOnly() throws {
+        let regex = try Regex(Prompts.imperativePattern)
+        #expect("add retry to the uploader".wholeMatch(of: regex) != nil)
+        #expect("Fix crash on launch".wholeMatch(of: regex) != nil)
+        #expect("unified diff parser".wholeMatch(of: regex) == nil)
+        #expect("added retry".wholeMatch(of: regex) == nil)
+    }
+
+    @Test func englishSubjectIsAVerbFromTheListThenTheRest() {
+        let english = HearthCommitModel.schema(imperativeEnglish: true)
+        let turkish = HearthCommitModel.schema(imperativeEnglish: false)
+        #expect((english["required"] as? [String]) == ["bullets", "verb", "rest", "type", "scope"])
+        #expect((turkish["required"] as? [String]) == ["bullets", "subject", "type", "scope"])
+        let verb = (english["properties"] as? [String: Any])?["verb"] as? [String: Any]
+        #expect((verb?["enum"] as? [String])?.contains("add") == true)
+    }
+}

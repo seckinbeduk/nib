@@ -19,10 +19,27 @@ public enum Prompts {
         chore = upkeep with no behavior change (versions, config, cleanup); style = formatting only.
         scope: a short lowercase name for the area changed, or empty.
         subject: imperative mood, at most 60 characters, no period. Example: "add retry to the upload client".
-        bullets: up to 4 short points on the important changes and why. Leave empty for a small change.
+        bullets: up to 4 short points on the important changes and why, also in the imperative ("Add…", "Fix…"). \
+        Leave empty for a small change.
         Describe the intent of the change as a whole, not every file. Never mention changes that aren't there.
         \(languageLine(language))
         """
+    }
+
+    /// Verbs a commit subject may start with, when it has to be imperative English.
+    public static let imperativeVerbs = """
+    add fix remove update rename move improve simplify support handle allow make use replace introduce \
+    implement extract split merge bump upgrade drop clean document test speed prevent avoid ensure show hide enable \
+    disable create build initialize set change reduce increase optimize restore revert release prepare migrate expose \
+    polish tweak correct adjust convert cache validate log skip keep write load save parse render format generate \
+    refactor rework reorganize unify limit raise lower return stop start run guard wrap export import include exclude \
+    deprecate delete extend harden shorten sort filter track retry report describe explain rewrite register configure \
+    install integrate detect
+    """.split(separator: " ").map(String.init)
+
+    /// "(add|Add|fix|Fix|…) [^\n]+": a subject that starts with one of those verbs.
+    public static var imperativePattern: String {
+        "(" + imperativeVerbs.flatMap { [$0, $0.prefix(1).uppercased() + $0.dropFirst()] }.joined(separator: "|") + ") [^\\n]+"
     }
 
     public static func composePrompt(overview: String, diff: String?, hints: [String]) -> String {

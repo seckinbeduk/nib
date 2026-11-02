@@ -102,6 +102,7 @@ Settings live in git config, per repo or with `--global`:
 | `nib.timeout` | seconds | `120` |
 | `nib.verbose` | `true` to show progress in the hook | `false` |
 | `nib.engine` | `apple`, `hearth`, `auto` | `apple` |
+| `nib.hearthModel` | `hearth` (its local model) or `apple-intelligence` (Apple's, counted in Hearth) | `hearth` |
 
 ```sh
 git config --global nib.language tr

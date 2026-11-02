@@ -90,7 +90,13 @@ public struct Generator: Sendable {
     public func budgetChars(for files: [FileDiff]) async -> Int {
         let tokens = max(model.contextTokens - Self.reservedTokens, 600)
         var ratio = Self.fallbackCharsPerToken
-        let sample = String(files.map(Planner.render).joined(separator: "\n").prefix(12_000))
+        let rendered = files.map(Planner.render).joined(separator: "\n")
+        // Counting costs about a second. Skip it when the diff fits even at the densest plausible
+        // ratio (1.5 characters per token): it won't be split either way.
+        if rendered.count <= Int(Double(tokens) * 1.5) {
+            return Int(Double(tokens) * ratio)
+        }
+        let sample = String(rendered.prefix(12_000))
         if sample.count >= 500, let counted = await model.tokenCount(sample), counted > 0 {
             ratio = min(max(Double(sample.count) / Double(counted), 1.5), 6)
             log("calibrated: \(String(format: "%.2f", ratio)) characters per token")

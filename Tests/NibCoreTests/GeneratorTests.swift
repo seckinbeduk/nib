@@ -31,10 +31,18 @@ struct GeneratorTests {
     @Test func calibratesWithRealTokenCounts() async {
         let model = FakeModel()
         model.charsPerToken = 4.5
-        let files = DiffParser.parse(Fixture.big("A.swift", hunks: 4, linesPerHunk: 20))
+        let files = DiffParser.parse(Fixture.big("A.swift", hunks: 10, linesPerHunk: 20))
         let budget = await Generator(model: model).budgetChars(for: files)
         let expected = Int(Double(4_096 - Generator.reservedTokens) * 4.5)
         #expect(abs(budget - expected) < expected / 50)   // token counts are whole numbers
+    }
+
+    @Test func smallDiffSkipsTheTokenCount() async {
+        let model = FakeModel()
+        model.charsPerToken = 4.5
+        let files = DiffParser.parse(Fixture.modified("A.swift"))
+        let budget = await Generator(model: model).budgetChars(for: files)
+        #expect(budget == Int(Double(4_096 - Generator.reservedTokens) * Generator.fallbackCharsPerToken))
     }
 
     @Test func retriesWithSmallerChunksAfterOverflow() async throws {

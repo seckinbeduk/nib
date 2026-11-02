@@ -20,15 +20,19 @@ struct GeneratedCommit {
     var scope: String
 }
 
-/// The same shape, with the subject held to an imperative English verb by constrained decoding.
-/// A 3B model often drifts into noun phrases ("unified diff parser"); this makes that impossible.
+/// The same shape, with the subject split into a verb chosen from a list and the rest.
+/// A 3B model often drifts into noun phrases ("unified diff parser"); a fixed choice of verb
+/// makes that impossible, and lists are something guided generation always supports.
 @Generable
 struct GeneratedEnglishCommit {
-    @Guide(description: "Up to four short points on the important changes and why. Empty for a small change.", .maximumCount(4))
+    @Guide(description: "Up to four short points on the important changes and why, in the imperative. Empty for a small change.", .maximumCount(4))
     var bullets: [String]
 
-    @Guide(description: "Imperative summary of the whole change, at most 60 characters, no period", .pattern(/([Aa]dd|[Ff]ix|[Rr]emove|[Uu]pdate|[Rr]ename|[Mm]ove|[Ii]mprove|[Ss]implify|[Ss]upport|[Hh]andle|[Aa]llow|[Mm]ake|[Uu]se|[Rr]eplace|[Ii]ntroduce|[Ii]mplement|[Ee]xtract|[Ss]plit|[Mm]erge|[Bb]ump|[Uu]pgrade|[Dd]rop|[Cc]lean|[Dd]ocument|[Tt]est|[Ss]peed|[Pp]revent|[Aa]void|[Ee]nsure|[Ss]how|[Hh]ide|[Ee]nable|[Dd]isable|[Cc]reate|[Bb]uild|[Ii]nitialize|[Ss]et|[Cc]hange|[Rr]educe|[Ii]ncrease|[Oo]ptimize|[Rr]estore|[Rr]evert|[Rr]elease|[Pp]repare|[Mm]igrate|[Ee]xpose|[Pp]olish|[Tt]weak|[Cc]orrect|[Aa]djust|[Cc]onvert|[Cc]ache|[Vv]alidate|[Ll]og|[Ss]kip|[Kk]eep|[Ww]rite|[Ll]oad|[Ss]ave|[Pp]arse|[Rr]ender|[Ff]ormat|[Gg]enerate|[Rr]efactor|[Rr]ework|[Rr]eorganize|[Uu]nify|[Ll]imit|[Rr]aise|[Ll]ower|[Rr]eturn|[Ss]top|[Ss]tart|[Rr]un|[Gg]uard|[Ww]rap|[Ee]xport|[Ii]mport|[Ii]nclude|[Ee]xclude|[Dd]eprecate|[Dd]elete|[Ee]xtend|[Hh]arden|[Ss]horten|[Ss]ort|[Ff]ilter|[Tt]rack|[Rr]etry|[Rr]eport|[Dd]escribe|[Ee]xplain|[Rr]ewrite|[Rr]egister|[Cc]onfigure|[Ii]nstall|[Ii]ntegrate|[Dd]etect) [^\n]+/))
-    var subject: String
+    @Guide(description: "The verb the summary starts with", .anyOf(Prompts.imperativeVerbs))
+    var verb: String
+
+    @Guide(description: "The rest of the one-line summary after the verb, lowercase, no period. Example: \"retry to the upload client\"")
+    var rest: String
 
     @Guide(description: "The kind of change", .anyOf(["feat", "fix", "refactor", "perf", "docs", "test", "build", "ci", "chore", "style"]))
     var type: String
@@ -69,7 +73,8 @@ struct AppleIntelligenceModel: CommitModel {
             do {
                 let session = LanguageModelSession(model: model, instructions: instructions)
                 let commit = try await session.respond(to: prompt, generating: GeneratedEnglishCommit.self, options: options).content
-                return CommitDraft(type: commit.type, scope: commit.scope, subject: commit.subject, bullets: commit.bullets)
+                return CommitDraft(type: commit.type, scope: commit.scope, subject: commit.verb + " " + commit.rest,
+                                   bullets: commit.bullets)
             } catch {
                 // Overflow is handled upstream; anything else, try again without the pattern.
                 if Self.translate(error) as? ModelError == .contextOverflow { throw ModelError.contextOverflow }

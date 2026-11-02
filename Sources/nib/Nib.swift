@@ -279,11 +279,13 @@ enum Runner {
             log("engine: Apple Intelligence")
             return AppleIntelligenceModel()
         }
-        guard let client = await HearthClient.discover(appName: "nib", appVersion: Nib.configuration.version) else {
+        let hearthModel = git.config("nib.hearthModel") ?? "hearth"
+        guard let client = await HearthClient.discover(appName: "nib", appVersion: Nib.configuration.version,
+                                                       requestedModel: hearthModel) else {
             if let appleProblem { throw NibError.modelUnavailable(appleProblem + " " + HearthError.notRunning.localizedDescription) }
             throw HearthError.notRunning
         }
-        log("engine: Hearth at \(client.baseURL.absoluteString)" + (client.model.map { " (\($0))" } ?? ""))
+        log("engine: Hearth at \(client.baseURL.absoluteString) (\(client.servingDescription))")
         return HearthCommitModel(client: client)
     }
 

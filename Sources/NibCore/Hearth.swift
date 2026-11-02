@@ -34,12 +34,20 @@ public struct HearthClient: Sendable {
     public let appVersion: String
     /// The model Hearth is serving, if it said.
     public let model: String?
+    /// What to ask Hearth for: "hearth" (its local model) or "apple-intelligence" (Apple's, through Hearth).
+    public var requestedModel: String
 
-    public init(baseURL: URL, appName: String, appVersion: String, model: String? = nil) {
+    public init(baseURL: URL, appName: String, appVersion: String, model: String? = nil, requestedModel: String = "hearth") {
         self.baseURL = baseURL
         self.appName = appName
         self.appVersion = appVersion
         self.model = model
+        self.requestedModel = requestedModel
+    }
+
+    /// "mlx-community/Qwen3-8B-4bit" or "Apple Intelligence via Hearth", for logs and status lines.
+    public var servingDescription: String {
+        requestedModel.lowercased().hasPrefix("apple") ? "Apple Intelligence via Hearth" : (model ?? "no model loaded")
     }
 
     /// Hearth's preferred port is 8800; if that's taken it uses one of the next nine.
@@ -54,7 +62,7 @@ public struct HearthClient: Sendable {
     }
 
     /// Finds a running Hearth on this Mac, or nil.
-    public static func discover(appName: String, appVersion: String) async -> HearthClient? {
+    public static func discover(appName: String, appVersion: String, requestedModel: String = "hearth") async -> HearthClient? {
         for port in candidatePorts() {
             guard let base = URL(string: "http://127.0.0.1:\(port)") else { continue }
             var request = URLRequest(url: base.appendingPathComponent("health"))
@@ -63,7 +71,8 @@ public struct HearthClient: Sendable {
                   (response as? HTTPURLResponse)?.statusCode == 200,
                   let health = try? JSONDecoder().decode(Health.self, from: data),
                   health.server == "Hearth" else { continue }
-            return HearthClient(baseURL: base, appName: appName, appVersion: appVersion, model: health.model)
+            return HearthClient(baseURL: base, appName: appName, appVersion: appVersion, model: health.model,
+                                requestedModel: requestedModel)
         }
         return nil
     }
@@ -75,18 +84,28 @@ public struct HearthClient: Sendable {
     }
 
     /// One chat completion, not streamed. Returns the text with any thinking removed.
-    public func chat(system: String, user: String, maxTokens: Int, temperature: Double = 0.3) async throws -> String {
+    /// With a `schema` (JSON Schema), Hearth answers Apple Intelligence requests through guided
+    /// generation, so the reply always matches; local models get the schema as an instruction.
+    public func chat(system: String, user: String, maxTokens: Int, temperature: Double = 0.3,
+                     schema: [String: Any]? = nil, schemaName: String = "Response") async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
         request.httpMethod = "POST"
         request.timeoutInterval = 180
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("\(appName)/\(appVersion) (macOS)", forHTTPHeaderField: "User-Agent")
         request.setValue(appName, forHTTPHeaderField: "X-Title")
-        request.httpBody = try JSONEncoder().encode(ChatRequest(
-            model: "hearth",
-            messages: [.init(role: "system", content: system), .init(role: "user", content: user)],
-            max_tokens: maxTokens, temperature: temperature, stream: false
-        ))
+        var body: [String: Any] = [
+            "model": requestedModel,
+            "messages": [["role": "system", "content": system], ["role": "user", "content": user]],
+            "max_tokens": maxTokens,
+            "temperature": temperature,
+            "stream": false,
+        ]
+        if let schema {
+            body["response_format"] = ["type": "json_schema",
+                                       "json_schema": ["name": schemaName, "schema": schema, "strict": true]]
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data: Data
         let response: URLResponse
@@ -103,18 +122,6 @@ public struct HearthClient: Sendable {
         guard let reply = try? JSONDecoder().decode(ChatReply.self, from: data),
               let content = reply.choices.first?.message.content else { throw HearthError.badReply }
         return JSONReply.removeThinking(content)
-    }
-
-    struct ChatRequest: Encodable {
-        struct Message: Encodable {
-            let role: String
-            let content: String
-        }
-        let model: String
-        let messages: [Message]
-        let max_tokens: Int
-        let temperature: Double
-        let stream: Bool
     }
 
     struct ChatReply: Decodable {
@@ -155,8 +162,11 @@ public struct HearthCommitModel: CommitModel {
         self.client = client
     }
 
-    /// Hearth's models take far more, but bigger prompts are slower; this keeps a commit quick.
-    public var contextTokens: Int { 8_192 }
+    /// Hearth's local models take far more, but bigger prompts are slower; this keeps a commit quick.
+    /// Hearth cuts prompts for Apple Intelligence at 10,000 characters, so stay well under that.
+    public var contextTokens: Int {
+        client.requestedModel.lowercased().hasPrefix("apple") ? 4_096 : 8_192
+    }
 
     public func tokenCount(_ text: String) async -> Int? { nil }
 
@@ -171,16 +181,45 @@ public struct HearthCommitModel: CommitModel {
         Reply with only a JSON object, no other text:
         {"bullets": ["..."], "subject": "...", "type": "...", "scope": "..."}
         """
-        let reply = try await client.chat(system: system, user: prompt, maxTokens: 400)
-        guard let draft = JSONReply.decode(Reply.self, from: reply), let subject = draft.subject, !subject.isEmpty else {
-            throw HearthError.badReply
-        }
+        let reply = try await client.chat(system: system, user: prompt, maxTokens: 400,
+                                          schema: Self.schema(imperativeEnglish: imperativeEnglish), schemaName: "CommitMessage")
+        guard let draft = JSONReply.decode(Reply.self, from: reply) else { throw HearthError.badReply }
+        let subject = draft.subject ?? [draft.verb, draft.rest].compactMap { $0 }.joined(separator: " ")
+        guard !subject.trimmingCharacters(in: .whitespaces).isEmpty else { throw HearthError.badReply }
         return CommitDraft(type: draft.type ?? "chore", scope: draft.scope ?? "", subject: subject, bullets: draft.bullets ?? [])
+    }
+
+    /// The same shape as the @Generable type used with Apple Intelligence directly, details first.
+    /// In English, the subject is a verb from a fixed list plus the rest, so it can't drift into a
+    /// noun phrase. Lists (`enum`) are always enforced; Apple's guided generation rejects `pattern`.
+    static func schema(imperativeEnglish: Bool) -> [String: Any] {
+        var properties: [String: Any] = [
+            "bullets": ["type": "array", "items": ["type": "string"], "maxItems": 4,
+                        "description": "Up to four short points on the important changes and why, in the imperative. Empty for a small change."],
+            "type": ["type": "string", "enum": ["feat", "fix", "refactor", "perf", "docs", "test", "build", "ci", "chore", "style"],
+                     "description": "The kind of change"],
+            "scope": ["type": "string", "description": "A short lowercase name for the area changed, or an empty string"],
+        ]
+        let summary: [String]
+        if imperativeEnglish {
+            properties["verb"] = ["type": "string", "enum": Prompts.imperativeVerbs,
+                                  "description": "The verb the summary starts with"]
+            properties["rest"] = ["type": "string",
+                                  "description": "The rest of the one-line summary after the verb, lowercase, no period. Example: \"retry to the upload client\""]
+            summary = ["verb", "rest"]
+        } else {
+            properties["subject"] = ["type": "string",
+                                     "description": "Imperative summary of the whole change, at most 60 characters, no period"]
+            summary = ["subject"]
+        }
+        return ["type": "object", "properties": properties, "required": ["bullets"] + summary + ["type", "scope"]]
     }
 
     struct Reply: Decodable {
         var bullets: [String]?
         var subject: String?
+        var verb: String?
+        var rest: String?
         var type: String?
         var scope: String?
     }
