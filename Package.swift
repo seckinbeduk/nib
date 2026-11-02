@@ -25,5 +25,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "NibCoreTests", dependencies: ["NibCore"]),
+        // Error mapping in the executable target; builds error values, never calls a model.
+        .testTarget(name: "NibTests", dependencies: ["nib", "NibCore"]),
     ]
 )

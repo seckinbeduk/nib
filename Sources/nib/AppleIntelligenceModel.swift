@@ -82,11 +82,12 @@ struct FoundationCommitModel<Model: LanguageModel>: CommitModel {
     /// Maps framework errors onto the two nib knows how to recover from; others pass through.
     static func translate(_ error: Error) -> Error {
         if error is HearthError { return error }
-        if let generationError = error as? LanguageModelSession.GenerationError {
-            switch generationError {
-            case .exceededContextWindowSize: return ModelError.contextOverflow
-            case .guardrailViolation: return ModelError.refused
-            default: break
+        if let modelError = error as? LanguageModelError {
+            switch modelError {
+            case .contextSizeExceeded: return ModelError.contextOverflow
+            case .guardrailViolation, .refusal: return ModelError.refused
+            // @nonexhaustive: anything else, including cases added later, passes through.
+            default: return error
             }
         }
         let description = String(describing: error)
