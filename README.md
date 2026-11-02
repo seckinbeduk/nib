@@ -101,12 +101,27 @@ Settings live in git config, per repo or with `--global`:
 | `nib.ticket` | `true`, `false`: add `Refs: ABC-123` when the branch name has a ticket ID | `true` |
 | `nib.timeout` | seconds | `120` |
 | `nib.verbose` | `true` to show progress in the hook | `false` |
+| `nib.engine` | `apple`, `hearth`, `auto` | `apple` |
 
 ```sh
 git config --global nib.language tr
 ```
 
 Command-line flags `--style`, `--language`, `--timeout` and `--verbose` override these for one run.
+
+## No Apple Intelligence? Use Hearth
+
+[Hearth](https://github.com/seckinbeduk/hearth) runs a local model on your Mac. nib can use it
+instead of Apple Intelligence, so it works on Macs and in regions without Apple Intelligence,
+and your code still never leaves the machine.
+
+```sh
+git config --global nib.engine hearth   # always Hearth
+git config --global nib.engine auto     # Apple Intelligence, Hearth when it isn't available
+```
+
+nib finds Hearth by itself and shows up in Hearth's **Who's using it**, so you can see how much it uses.
+`nib doctor` shows whether Hearth is running.
 
 ## Develop
 

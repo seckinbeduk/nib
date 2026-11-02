@@ -19,6 +19,11 @@ struct MessageFormatterTests {
         #expect(MessageFormatter.format(draft, style: .conventional) == "feat: API keys can be rotated")
     }
 
+    @Test func scopeThatRepeatsTheTypeIsDropped() {
+        let draft = CommitDraft(type: "docs", scope: "docs", subject: "show demo in README")
+        #expect(MessageFormatter.format(draft, style: .conventional) == "docs: show demo in README")
+    }
+
     @Test func unknownTypeBecomesChore() {
         let draft = CommitDraft(type: "update", subject: "bump version")
         #expect(MessageFormatter.format(draft, style: .conventional) == "chore: bump version")
@@ -169,5 +174,29 @@ struct HookTests {
 
         #expect(try Hook.uninstall(from: directory))
         #expect(try String(contentsOf: hook, encoding: .utf8).contains("echo mine"))
+    }
+}
+
+@Suite("Hearth replies")
+struct JSONReplyTests {
+    struct Idea: Decodable, Equatable { var title: String? }
+
+    @Test func plainJSON() {
+        #expect(JSONReply.decode(Idea.self, from: #"{"title": "Flight Booking"}"#) == Idea(title: "Flight Booking"))
+    }
+
+    @Test func wrappedInFencesAndThinking() {
+        let reply = "<think>\nThe user wants a title.\n</think>\nSure:\n```json\n{\"title\": \"Tax Return 2025\"}\n```"
+        #expect(JSONReply.decode(Idea.self, from: reply) == Idea(title: "Tax Return 2025"))
+    }
+
+    @Test func noJSON() {
+        #expect(JSONReply.decode(Idea.self, from: "I can't help with that.") == nil)
+    }
+
+    @Test func engines() {
+        #expect(Engine(rawValue: "hearth") == .hearth)
+        #expect(Engine(rawValue: "auto") == .auto)
+        #expect(Engine(rawValue: "cloud") == nil)
     }
 }

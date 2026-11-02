@@ -7,7 +7,7 @@ struct Nib: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "nib",
         abstract: "Commit messages written on your Mac by Apple Intelligence. Your code never leaves the machine.",
-        version: "0.1.0",
+        version: "0.2.0",
         subcommands: [Generate.self, Commit.self, HookCommand.self, Doctor.self],
         defaultSubcommand: Generate.self
     )
@@ -22,6 +22,9 @@ struct MessageOptions: ParsableArguments {
 
     @Option(help: "Give up after this many seconds. Default: git config nib.timeout, then 120.")
     var timeout: Double?
+
+    @Option(help: "apple, hearth or auto (Apple Intelligence, else Hearth). Default: git config nib.engine, then apple.")
+    var engine: String?
 
     @Flag(name: .shortAndLong, help: "Show what nib is doing.")
     var verbose = false
@@ -190,6 +193,13 @@ struct Doctor: AsyncParsableCommand {
         } else {
             row("Apple Intelligence", "✓ ready (\(AppleIntelligenceModel().contextTokens) token context)")
         }
+        if let hearth = await HearthClient.discover(appName: "nib", appVersion: Nib.configuration.version) {
+            row("Hearth", "✓ running at \(hearth.baseURL.absoluteString)" + (hearth.model.map { ", \($0)" } ?? ", no model loaded"))
+        } else {
+            row("Hearth", "– not running (optional: github.com/seckinbeduk/hearth)")
+        }
+        let engine = (try? Runner.engine(git: Git(), options: try MessageOptions.parse([])))?.rawValue ?? "?"
+        row("engine", engine + (engine == "apple" ? "" : " (git config nib.engine)"))
 
         guard git.isRepository() else {
             row("git repository", "– not in one (run nib inside a repo)")
@@ -235,18 +245,46 @@ enum Runner {
                          log: @escaping @Sendable (String) -> Void) async throws -> Generator.Result {
         let diff = try git.stagedDiff()
         guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw NibError.nothingStaged }
-        if let reason = AppleIntelligence.unavailableReason() { throw NibError.modelUnavailable(reason) }
+        let model = try await commitModel(git: git, options: options, log: log)
 
         let settings = try settings(git: git, options: options)
         let seconds = options.timeout ?? git.config("nib.timeout").flatMap { Double($0) } ?? 120
-        let generator = Generator(model: AppleIntelligenceModel(), log: log,
-                                  progress: { printError("nib: " + $0) })
+        let generator = Generator(model: model, log: log, progress: { printError("nib: " + $0) })
         let started = Date()
         let result = try await withTimeout(seconds: seconds) {
             try await generator.generate(diff: diff, settings: settings)
         }
         log("done in \(String(format: "%.1f", Date().timeIntervalSince(started)))s with \(result.modelCalls) model call(s)")
         return result
+    }
+
+    static func engine(git: Git, options: MessageOptions) throws -> Engine {
+        let value = options.engine ?? git.config("nib.engine") ?? "apple"
+        guard let engine = Engine(rawValue: value.lowercased()) else {
+            throw ValidationError("Unknown engine \"\(value)\". Use apple, hearth or auto.")
+        }
+        return engine
+    }
+
+    /// Apple Intelligence or Hearth, as configured.
+    static func commitModel(git: Git, options: MessageOptions,
+                            log: @Sendable (String) -> Void) async throws -> any CommitModel {
+        let engine = try engine(git: git, options: options)
+        let appleProblem = engine == .hearth ? nil : AppleIntelligence.unavailableReason()
+        if engine == .apple || (engine == .auto && appleProblem == nil) {
+            if let appleProblem {
+                throw NibError.modelUnavailable(appleProblem + "\nNo Apple Intelligence? nib can use Hearth's local model instead: "
+                                                + "git config --global nib.engine hearth")
+            }
+            log("engine: Apple Intelligence")
+            return AppleIntelligenceModel()
+        }
+        guard let client = await HearthClient.discover(appName: "nib", appVersion: Nib.configuration.version) else {
+            if let appleProblem { throw NibError.modelUnavailable(appleProblem + " " + HearthError.notRunning.localizedDescription) }
+            throw HearthError.notRunning
+        }
+        log("engine: Hearth at \(client.baseURL.absoluteString)" + (client.model.map { " (\($0))" } ?? ""))
+        return HearthCommitModel(client: client)
     }
 
     static func showPlan(git: Git) async throws {

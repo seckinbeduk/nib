@@ -37,7 +37,8 @@ public enum MessageFormatter {
             header = clip(capitalizeFirst(subject), to: headerLimit)
         } else {
             let type = allowedTypes.contains(draft.type.lowercased()) ? draft.type.lowercased() : "chore"
-            let scope = cleanScope(draft.scope)
+            let cleaned = cleanScope(draft.scope)
+            let scope = cleaned == type ? "" : cleaned   // "docs(docs):" says nothing twice
             let prefix = type + (scope.isEmpty ? "" : "(\(scope))") + ": "
             header = prefix + clip(lowercaseFirst(subject), to: headerLimit - prefix.count)
         }
