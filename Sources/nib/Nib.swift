@@ -7,7 +7,7 @@ struct Nib: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "nib",
         abstract: "Commit messages written on your Mac by Apple Intelligence. Your code never leaves the machine.",
-        version: "0.2.0",
+        version: "0.2.1",
         subcommands: [Generate.self, Commit.self, HookCommand.self, Doctor.self],
         defaultSubcommand: Generate.self
     )
