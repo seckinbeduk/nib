@@ -3,17 +3,7 @@
 **Commit messages written on your Mac by Apple Intelligence.**
 Your code never leaves the machine. No API key, no account, no cost, works offline.
 
-```console
-$ git add -A
-$ nib
-feat(planner): split large diffs into prompt-sized chunks
-
-- Pack files into chunks most-changed first so small edits share space
-- Truncate oversized hunks in the middle, keeping their start and end
-- Retry with smaller chunks when the context window overflows
-```
-
-<!-- TODO: demo GIF of `git commit` with the hook installed -->
+![nib writing a commit message on-device](docs/demo.gif)
 
 ## Why
 
