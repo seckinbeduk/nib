@@ -126,7 +126,7 @@ struct HookCommand: AsyncParsableCommand {
 
         func run() throws {
             let git = Git()
-            guard git.isRepository() else { throw ValidationError("Not inside a git repository.") }
+            try git.requireRepository()
             let directory = try git.hooksDirectory()
             switch try Hook.install(in: directory, binaryPath: Runner.executablePath(), force: force) {
             case .installed:
@@ -143,7 +143,9 @@ struct HookCommand: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Remove nib's hook from this repository.")
 
         func run() throws {
-            let directory = try Git().hooksDirectory()
+            let git = Git()
+            try git.requireRepository()
+            let directory = try git.hooksDirectory()
             print(try Hook.uninstall(from: directory) ? "✓ Hook removed." : "nib's hook isn't installed here.")
         }
     }

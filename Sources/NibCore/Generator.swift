@@ -25,6 +25,7 @@ public enum NibError: Error, LocalizedError, Equatable {
     case modelUnavailable(String)
     case git(String)
     case hookExists(String)
+    case notARepository
 
     public var errorDescription: String? {
         switch self {
@@ -33,6 +34,7 @@ public enum NibError: Error, LocalizedError, Equatable {
         case .modelUnavailable(let reason): reason
         case .git(let message): message
         case .hookExists(let path): "There's already a hook at \(path). Run `nib hook install --force` to replace it (the old one is kept as a backup)."
+        case .notARepository: "Not a git repository. Run nib inside a repo."
         }
     }
 }

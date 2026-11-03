@@ -49,7 +49,9 @@ public struct Git: Sendable {
 
     /// The staged changes, in a format the parser can rely on whatever the user's diff settings are.
     public func stagedDiff() throws -> String {
-        try run([
+        // Outside a repo, `git diff --cached` falls back to `--no-index` and prints its whole usage.
+        try requireRepository()
+        return try run([
             "-c", "core.quotepath=false",
             "diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames",
             "--src-prefix=a/", "--dst-prefix=b/", "--unified=3",
@@ -79,7 +81,29 @@ public struct Git: Sendable {
     }
 
     public func isRepository() -> Bool {
-        (try? run(["rev-parse", "--is-inside-work-tree"]))?.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+        (try? requireRepository()) != nil
+    }
+
+    /// Throws `.notARepository` outside a work tree (including inside `.git` and bare repos).
+    /// Other git errors, like "dubious ownership", come through as git wrote them.
+    public func requireRepository() throws {
+        let output: String
+        do {
+            output = try run(["rev-parse", "--is-inside-work-tree"])
+        } catch {
+            throw Self.repositoryError(error)
+        }
+        guard output.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { throw NibError.notARepository }
+    }
+
+    /// Maps a failed `git rev-parse` to the error nib shows. Only git's plain "no repo found here"
+    /// message becomes the short one; "not a git repository: '<path>'" (a bad GIT_DIR) names the
+    /// cause, so it comes through unchanged.
+    static func repositoryError(_ error: Error) -> Error {
+        if case NibError.git(let message) = error, message.contains("not a git repository (or any") {
+            return NibError.notARepository
+        }
+        return error
     }
 }
 
