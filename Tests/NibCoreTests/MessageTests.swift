@@ -252,3 +252,123 @@ struct SubjectRepairTests {
         #expect(MessageFormatter.format(vagueBullet, style: .conventional, paths: paths).hasPrefix("ci: update ci workflow\n"))
     }
 }
+
+/// Scope checks against the changed files, with the file lists of real nib commits.
+@Suite("Scope reconciliation")
+struct ScopeReconciliationTests {
+    /// What Generator does: suggest from the files, then check the model's scope.
+    private func scope(_ model: String, _ diffs: String...) -> String {
+        let files = DiffParser.parse(diffs.joined(separator: "\n"))
+        let signal = files.filter { NoiseFilter.classify($0) == nil }
+        let used = signal.isEmpty ? files : signal
+        return Hints.reconcileScope(modelScope: model, suggested: Hints.suggestedScope(for: used), files: used)
+    }
+
+    @Test func testTargetsFoldIntoTheirModule() {
+        let files = Fixture.files(Fixture.modified("Sources/NibCore/CommitMessage.swift"),
+                                  Fixture.modified("Tests/NibCoreTests/MessageTests.swift"))
+        #expect(Hints.suggestedScope(for: files) == "nibcore")
+    }
+
+    @Test func docsBesideCodeDontHideTheSharedDirectory() {
+        let files = Fixture.files(Fixture.modified("Sources/NibCore/Hearth.swift"), Fixture.modified("README.md"))
+        #expect(Hints.suggestedScope(for: files) == "nibcore")
+        #expect(Hints.suggestedScope(for: Fixture.files(Fixture.modified("README.md"))) == nil)
+    }
+
+    // nib 7fa1409: "package" came from Package.swift. The root manifest doesn't count for the shared
+    // directory, so Sources/nib and Tests/NibTests give the real scope.
+    @Test func scopeFromTheManifestNameBecomesTheModule() {
+        let diffs = [Fixture.modified("Package.swift", section: "let package = Package("),
+                     Fixture.modified("Sources/nib/AppleIntelligenceModel.swift"),
+                     Fixture.added("Tests/NibTests/ErrorTranslationTests.swift", lines: ["import Testing"])]
+        let files = DiffParser.parse(diffs.joined(separator: "\n"))
+        let reconciled = Hints.reconcileScope(modelScope: "package", suggested: Hints.suggestedScope(for: files), files: files)
+        #expect(reconciled == "nib")
+        let draft = CommitDraft(type: "feat", scope: reconciled, subject: "add error mapping")
+        #expect(MessageFormatter.format(draft, style: .conventional) == "feat(nib): add error mapping")
+    }
+
+    // A manifest name is still dropped when there is no module to offer instead.
+    @Test func scopeFromTheManifestNameIsDroppedWithoutAModule() {
+        #expect(scope("package", Fixture.modified("Package.swift"), Fixture.modified("Sources/NibCore/Planner.swift"),
+                      Fixture.modified("Sources/nib/Nib.swift")) == "")
+        #expect(scope("deps", Fixture.modified("Package.swift"), Fixture.modified("Package.resolved")) == "deps")
+    }
+
+    // A new dependency used in code: the module isn't clearly better than "deps", so the model's scope stays.
+    @Test func scopeStaysWhenARootManifestChangedToo() {
+        #expect(scope("deps", Fixture.modified("Package.swift"), Fixture.modified("Package.resolved"),
+                      Fixture.modified("Sources/nib/Nib.swift")) == "deps")
+    }
+
+    // Nested manifests count for the shared directory, and their name is dropped like a root one.
+    @Test func manifestNameIsReplacedByThePackage() {
+        #expect(scope("package", Fixture.modified("packages/web/package.json"), Fixture.modified("packages/web/src/index.ts")) == "web")
+        #expect(scope("package", Fixture.modified("package.json"), Fixture.modified("packages/web/src/index.ts")) == "web")
+    }
+
+    // A source file's name is a real scope even when other files changed too (Swift files are named after their type).
+    @Test func scopeFromOneSourceFileIsKept() {
+        #expect(scope("planner", Fixture.modified("Sources/NibCore/Planner.swift", section: "enum Planner {"),
+                      Fixture.modified("Tests/NibCoreTests/PlannerTests.swift"),
+                      Fixture.modified("Sources/NibCore/Generator.swift")) == "planner")
+    }
+
+    // requirements.txt ends in .txt but is a build file, not docs: it still decides the shared directory.
+    @Test func buildFilesThatLookLikeDocsCount() {
+        let files = Fixture.files(Fixture.modified("services/billing/requirements.txt"),
+                                  Fixture.modified("services/auth/handlers.py"))
+        #expect(Hints.suggestedScope(for: files) == "services")
+    }
+
+    // nib f4b9fd5: "file-paths" is no directory, file or declaration; the module is.
+    @Test func inventedScopeBecomesTheModule() {
+        #expect(scope("file-paths",
+                      Fixture.modified("Sources/NibCore/CommitMessage.swift", added: ["    public static func format(paths: [String] = [])"]),
+                      Fixture.modified("Sources/NibCore/Generator.swift"),
+                      Fixture.modified("Tests/NibCoreTests/MessageTests.swift")) == "nibcore")
+    }
+
+    @Test func scopesThatMatchTheFilesAreKept() {
+        #expect(scope("nib", Fixture.modified("Sources/nib/Nib.swift")) == "nib")                       // fb6f947
+        #expect(scope("workflows", Fixture.modified(".github/workflows/ci.yml")) == "workflows")        // a9d9187
+        #expect(scope("planner", Fixture.modified("Sources/NibCore/Planner.swift"),
+                      Fixture.modified("Tests/NibCoreTests/PlannerTests.swift")) == "planner")
+        #expect(scope("nibcore", Fixture.modified("Sources/NibCore/Hearth.swift"), Fixture.modified("README.md")) == "nibcore")
+    }
+
+    // With no shared directory there is nothing better, so the model's scope stays.
+    @Test func scopeStaysWithoutABetterOne() {
+        #expect(scope("model", Fixture.modified("README.md"), Fixture.modified("Sources/NibCore/CommitMessage.swift"),     // ee935c5
+                      Fixture.added("Sources/NibCore/Hearth.swift", lines: ["import Foundation"]),
+                      Fixture.modified("Sources/nib/Nib.swift"), Fixture.modified("Tests/NibCoreTests/MessageTests.swift")) == "model")
+        #expect(scope("nibcore", Fixture.modified("README.md"), Fixture.modified("Sources/NibCore/Generator.swift"),       // 0d5f750
+                      Fixture.modified("Sources/nib/Nib.swift"), Fixture.modified("Tests/NibCoreTests/GeneratorTests.swift")) == "nibcore")
+        #expect(scope("deps", Fixture.modified("Package.resolved")) == "deps")                                             // lockfile only
+        #expect(scope("", Fixture.modified("Sources/NibCore/Planner.swift")) == "")
+    }
+
+    @Test func declaredNameIsKept() {
+        let hearth = Fixture.modified("Sources/NibCore/Hearth.swift", section: "public enum Engine: String, Sendable, CaseIterable, Codable {",
+                                      removed: ["    case apple"], added: ["    case apple", "    case auto"])
+        #expect(Fixture.files(hearth).first?.hunks.first?.contains("enum Engine") == true)   // the parser keeps the @@ line
+        #expect(scope("engine", hearth) == "engine")
+    }
+
+    // Plural and snake_case declarations still count; each file has a suggestion that would otherwise win.
+    @Test func declaredNamesMatchPluralAndSnakeCase() {
+        #expect(scope("policies", Fixture.modified("Sources/NibCore/Rules.swift", section: "enum Policies {")) == "policies")
+        #expect(scope("file-path", Fixture.modified("app/billing/models.py", added: ["    def file_path(self):"])) == "file-path")
+    }
+
+    // Known weakness: a concept declared with `let` isn't recognized, so the module wins.
+    @Test func knownWeaknessLetDeclarationsAreNotNames() {
+        #expect(scope("engine", Fixture.modified("Sources/NibCore/Hearth.swift", added: ["    static let engine = Engine.auto"])) == "nibcore")
+    }
+
+    // Known weakness: any declaration counts, so a weak scope survives when it's a declared name.
+    @Test func knownWeaknessAnyDeclarationCounts() {
+        #expect(scope("string", Fixture.modified("Sources/NibCore/Text.swift", section: "extension String {")) == "string")
+    }
+}

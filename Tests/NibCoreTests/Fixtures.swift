@@ -3,13 +3,15 @@ import Foundation
 
 /// Builds `git diff` output for tests.
 enum Fixture {
-    static func modified(_ path: String, removed: [String] = ["old line"], added: [String] = ["new line"]) -> String {
+    /// `section` is the text git puts after the `@@` range: the enclosing declaration.
+    static func modified(_ path: String, section: String = "", removed: [String] = ["old line"],
+                         added: [String] = ["new line"]) -> String {
         """
         diff --git a/\(path) b/\(path)
         index 1111111..2222222 100644
         --- a/\(path)
         +++ b/\(path)
-        @@ -1,\(removed.count + 1) +1,\(added.count + 1) @@
+        @@ -1,\(removed.count + 1) +1,\(added.count + 1) @@\(section.isEmpty ? "" : " " + section)
          context
         \(removed.map { "-" + $0 }.joined(separator: "\n"))
         \(added.map { "+" + $0 }.joined(separator: "\n"))

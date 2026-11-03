@@ -130,8 +130,9 @@ public struct Generator: Sendable {
     func run(_ plan: Plan, files: [FileDiff], settings: Settings) async throws -> Result {
         let signal = files.filter { NoiseFilter.classify($0) == nil }
         let suggestedType = Hints.suggestedType(for: files)
-        let hints = Prompts.hintLines(type: suggestedType,
-                                      scope: Hints.suggestedScope(for: signal.isEmpty ? files : signal))
+        let scopeFiles = signal.isEmpty ? files : signal
+        let suggestedScope = Hints.suggestedScope(for: scopeFiles)
+        let hints = Prompts.hintLines(type: suggestedType, scope: suggestedScope)
         let composeInstructions = Prompts.composeInstructions(language: settings.language)
         var calls = 0
 
@@ -164,6 +165,7 @@ public struct Generator: Sendable {
         let english = settings.language.map(Prompts.isEnglish) ?? true
         var draft = try await model.draft(instructions: composeInstructions, prompt: prompt, imperativeEnglish: english)
         draft.type = Hints.reconcile(modelType: draft.type, suggested: suggestedType)
+        draft.scope = Hints.reconcileScope(modelScope: draft.scope, suggested: suggestedScope, files: scopeFiles)
         log("message: \(prompt.count) chars in \(Self.seconds(since: started))")
         let message = MessageFormatter.format(draft, style: settings.resolvedStyle, ticket: settings.ticket,
                                               paths: files.map(\.path))
