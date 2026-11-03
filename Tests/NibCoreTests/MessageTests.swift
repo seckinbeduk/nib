@@ -89,6 +89,23 @@ struct HintsTests {
         #expect(Hints.suggestedType(for: Fixture.files(Fixture.added("Sources/App.swift", lines: ["x"]), Fixture.added("README.md", lines: ["y"]))) == "feat")
     }
 
+    // Build files with docs-like names are build, unless they live under docs/.
+    @Test func buildFilesThatLookLikeDocsAreBuild() {
+        func type(_ paths: String...) -> String? {
+            Hints.suggestedType(for: DiffParser.parse(paths.map { Fixture.modified($0) }.joined(separator: "\n")))
+        }
+        #expect(type("requirements.txt") == "build")
+        #expect(type("requirements-dev.txt") == "build")
+        #expect(type("CMakeLists.txt") == "build")
+        #expect(type("README.md", "requirements.txt") == nil)
+        #expect(type("docs/requirements.txt") == "docs")
+        #expect(type("docs/Makefile", "docs/index.rst") == "docs")
+        #expect(type("docs/notes.txt") == "docs")
+        #expect(type("LICENSE") == "docs")
+        #expect(!Hints.isDocs("requirements.txt"))
+        #expect(!Hints.isDocs("requirements-dev.txt"))
+    }
+
     @Test func pathsOverruleTheModelOnlyWhenCertain() {
         #expect(Hints.reconcile(modelType: "feat", suggested: "docs") == "docs")
         #expect(Hints.reconcile(modelType: "chore", suggested: "test") == "test")
@@ -300,6 +317,14 @@ struct ScopeReconciliationTests {
     @Test func scopeStaysWhenARootManifestChangedToo() {
         #expect(scope("deps", Fixture.modified("Package.swift"), Fixture.modified("Package.resolved"),
                       Fixture.modified("Sources/nib/Nib.swift")) == "deps")
+        #expect(scope("deps", Fixture.modified("requirements-dev.txt"), Fixture.modified("server/app.py")) == "deps")
+    }
+
+    // Every pip file names the same thing, so "requirements" is a manifest name for requirements-dev.txt too.
+    @Test func pipFileNamesAreManifestNames() {
+        #expect(scope("requirements", Fixture.modified("requirements-dev.txt"), Fixture.modified("server/app.py")) == "server")
+        #expect(scope("requirements", Fixture.modified("requirements.txt"), Fixture.modified("server/app.py")) == "server")
+        #expect(scope("requirements", Fixture.modified("requirements-dev.txt")) == "")
     }
 
     // Nested manifests count for the shared directory, and their name is dropped like a root one.

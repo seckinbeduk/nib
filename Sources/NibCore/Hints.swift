@@ -30,11 +30,14 @@ public enum Hints {
         }
     }
 
+    /// Anything under `docs/` is docs, build files there too (`docs/Makefile`, `docs/requirements.txt`).
+    /// Elsewhere a build file is never docs, even with a docs-like name (`requirements.txt`, `CMakeLists.txt`).
     static func isDocs(_ path: String) -> Bool {
         let lower = path.lowercased()
+        if lower.hasPrefix("docs/") || lower.contains("/docs/") { return true }
+        if isBuild(path) { return false }
         let name = lower.split(separator: "/").last.map(String.init) ?? lower
-        return lower.hasPrefix("docs/") || lower.contains("/docs/")
-            || [".md", ".mdx", ".rst", ".adoc", ".txt"].contains(where: { lower.hasSuffix($0) })
+        return [".md", ".mdx", ".rst", ".adoc", ".txt"].contains(where: { lower.hasSuffix($0) })
             || ["license", "authors", "contributors"].contains(name)
     }
 
@@ -55,6 +58,8 @@ public enum Hints {
 
     static func isBuild(_ path: String) -> Bool {
         let name = path.split(separator: "/").last.map(String.init) ?? path
+        // requirements-dev.txt, requirements_test.txt: pip files under another name.
+        if name.hasPrefix("requirements"), name.hasSuffix(".txt") { return true }
         return NoiseFilter.lockfiles.contains(name) || [
             "Package.swift", "package.json", "Podfile", "Gemfile", "Cargo.toml", "go.mod", "pyproject.toml",
             "requirements.txt", "build.gradle", "build.gradle.kts", "pom.xml", "Makefile", "CMakeLists.txt", "project.yml",
@@ -94,7 +99,7 @@ public enum Hints {
         let stems = used.map { scopeKey(fileStem($0.path)) }
         if !stems.isEmpty, stems.allSatisfy({ $0 == key }) { return modelScope }
         // All files, not just `used`: a root manifest is left out of `used` but still names nothing.
-        if files.contains(where: { isBuild($0.path) && scopeKey(fileStem($0.path)) == key }) { return suggested ?? "" }
+        if files.contains(where: { isBuild($0.path) && manifestKey($0.path) == key }) { return suggested ?? "" }
         if stems.contains(key) || declares(key, in: used) { return modelScope }
         // A root manifest changed too, so the suggestion only describes part of the change
         // ("deps" for Package.swift + Sources/nib/Nib.swift isn't worse than "nib"): leave the model's scope.
@@ -133,6 +138,13 @@ public enum Hints {
     }
 
     /// `Sources/NibCore/PlannerTests.swift` → `planner`.
+    /// The scope key a build manifest's name suggests: `package` for `Package.swift`, and `requirement`
+    /// for every pip file (`requirements-dev.txt` names the same thing as `requirements.txt`).
+    static func manifestKey(_ path: String) -> String {
+        let stem = fileStem(path)
+        return scopeKey(stem.hasPrefix("requirements") ? "requirements" : stem)
+    }
+
     static func fileStem(_ path: String) -> String {
         let name = path.split(separator: "/").last.map(String.init) ?? path
         let stem = name.split(separator: ".").first.map(String.init) ?? name
