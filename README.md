@@ -8,7 +8,7 @@ Your code never leaves the machine. No API key, no account, no cost, works offli
 ## Why
 
 AI commit tools usually send your diff to someone else's server and bill you per token.
-macOS 26 ships a capable language model on every Apple Intelligence Mac, and the
+macOS 26 and later ship a capable language model on every Apple Intelligence Mac, and the
 [Foundation Models framework](https://developer.apple.com/documentation/foundationmodels)
 lets any app use it. nib is a small, native Swift tool that does exactly one thing with it.
 
@@ -78,7 +78,7 @@ flowchart LR
    and on-device the cost is time: the model reads roughly a few hundred tokens per second.
    Edited files are always sent as real hunks, because that's where the change is.
 3. **Measure, don't guess.** nib asks the model's own tokenizer how many tokens a sample of the diff
-   takes (macOS 26.4+), so the budget is right for this particular diff, whether it's dense Swift or
+   takes, so the budget is right for this particular diff, whether it's dense Swift or
    wordy Markdown.
 4. **Split and pack.** If the diff doesn't fit, big files are cut at hunk boundaries, and a single
    giant hunk keeps its start and end with the middle elided. The pieces are packed into chunks with
@@ -91,11 +91,14 @@ flowchart LR
    typed fields instead of free text. The bullets come first and the subject after, so the
    one-line summary is written from what the model has already worked out. nib then enforces
    the rules a small model forgets: imperative subject under 72 characters, no trailing period,
-   a valid type, wrapped body.
+   a valid type, wrapped body. A subject that lists several changes or only names a file
+   ("update ci workflow") is replaced by the first bullet when that says more.
 
 If the model still reports a context overflow, nib shrinks the chunks and tries again.
-Cheap hints help too: a change that only touches docs is nudged towards `docs`, and the
-directory every file shares is offered as the scope.
+Cheap hints help too: a change that only touches docs is set to `docs`, and the directory every
+file shares is offered as the scope. The model's scope is then checked against the changed files:
+an invented one becomes that shared module, and one that is only a manifest's name (`package` from
+`Package.swift`) is replaced by the module, or dropped when there is none.
 
 ## Configure
 
@@ -141,7 +144,7 @@ swift test
 
 `NibCore` holds everything that doesn't need the model (diff parsing, budgeting, prompts,
 formatting, the hook) and is tested with a fake model. `Sources/nib` is the command-line tool
-and the Apple Intelligence backend.
+and the Apple Intelligence backend; `NibTests` covers its error mapping without calling a model.
 
 ## License
 
