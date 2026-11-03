@@ -20,6 +20,21 @@ lets any app use it. nib is a small, native Swift tool that does exactly one thi
 ## Install
 
 Needs an Apple silicon Mac with Apple Intelligence turned on, or [Hearth](https://github.com/seckinbeduk/hearth) running.
+
+### Homebrew
+
+On macOS 27 or later:
+
+```sh
+brew install seckinbeduk/tap/nib
+```
+
+Update with `brew upgrade nib`. The binary is ad-hoc signed, not notarized.
+Installed nib with `install.sh` before? Remove that copy first (`rm /opt/homebrew/bin/nib`), or Homebrew can't link its own.
+Run `nib doctor` to check everything is in place.
+
+### Build from source
+
 Pick the version for your macOS:
 
 | macOS | nib | Builds with | What you get |
@@ -35,6 +50,7 @@ git checkout v0.2.1   # macOS 26 only
 ```
 
 `install.sh` builds a release binary and copies it to `/opt/homebrew/bin` if that's writable, otherwise to `~/.local/bin`.
+If you installed nib with Homebrew, run `brew uninstall nib` first; `install.sh` would replace Homebrew's link and break `brew upgrade`.
 Run `nib doctor` to check everything is in place.
 
 ## Use
