@@ -27,14 +27,14 @@ On macOS 27 or later:
 
 ```sh
 brew install seckinbeduk/tap/nib
+nib doctor
 ```
 
-Update with `brew upgrade nib`. The binary is ad-hoc signed, not notarized.
-Installed nib with `install.sh` before? Remove that copy first (`rm /opt/homebrew/bin/nib`), or Homebrew can't link its own.
-Run `nib doctor` to check everything is in place.
+Update with `brew upgrade nib`.
 
 ### Build from source
 
+The Homebrew binary is ad-hoc signed, not notarized. Building from source gives you your own copy.
 Pick the version for your macOS:
 
 | macOS | nib | Builds with | What you get |
@@ -51,6 +51,7 @@ git checkout v0.2.1   # macOS 26 only
 
 `install.sh` builds a release binary and copies it to `/opt/homebrew/bin` if that's writable, otherwise to `~/.local/bin`.
 If you installed nib with Homebrew, run `brew uninstall nib` first; `install.sh` would replace Homebrew's link and break `brew upgrade`.
+Switching to Homebrew later? Remove the `install.sh` copy first (`rm /opt/homebrew/bin/nib`), or Homebrew can't link its own.
 Run `nib doctor` to check everything is in place.
 
 ## Use
