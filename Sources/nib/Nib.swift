@@ -10,7 +10,7 @@ struct Nib: AsyncParsableCommand {
         commandName: "nib",
         abstract: "Commit messages written on your Mac by Apple Intelligence. Your code never leaves the machine.",
         discussion: "As a git command, `git nib` writes the message, asks, and commits (same as `nib commit`).",
-        version: "0.4.1",
+        version: "0.5.0",
         subcommands: [Generate.self, Commit.self, HookCommand.self, Doctor.self],
         defaultSubcommand: Generate.self
     )
