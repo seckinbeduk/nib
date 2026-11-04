@@ -30,7 +30,7 @@ brew install seckinbeduk/tap/nib
 nib doctor
 ```
 
-Update with `brew upgrade nib`.
+Then commit with `git nib`. Update with `brew upgrade nib`.
 
 ### Build from source
 
@@ -49,7 +49,9 @@ git checkout v0.2.1   # macOS 26 only
 ./install.sh
 ```
 
-`install.sh` builds a release binary and copies it to `/opt/homebrew/bin` if that's writable, otherwise to `~/.local/bin`.
+`install.sh` builds a release binary and copies it to `/opt/homebrew/bin` if that's writable, otherwise to `~/.local/bin`,
+with a `git-nib` link next to it so `git nib` works. Help is `git nib -h` (`git nib --help` opens a man page,
+which only the Homebrew install has).
 If you installed nib with Homebrew, run `brew uninstall nib` first; `install.sh` would replace Homebrew's link and break `brew upgrade`.
 Switching to Homebrew later? Remove the `install.sh` copy first (`rm /opt/homebrew/bin/nib`), or Homebrew can't link its own.
 Run `nib doctor` to check everything is in place.
@@ -57,16 +59,16 @@ Run `nib doctor` to check everything is in place.
 ## Use
 
 ```sh
-nib                  # print a message for the staged changes
-nib commit           # write it, confirm in the terminal (Enter / e / r / n), commit
-nib commit -y        # commit without asking
+git nib              # write the message, confirm in the terminal (Enter / e / r / n), commit
+git nib -y           # commit without asking
+nib                  # just print a message for the staged changes
 nib hook install     # from now on, `git commit` opens with the message already written
 nib generate --plan  # show how a big diff would be split, without calling the model
 ```
 
-Prefer to stay in the terminal? `nib commit` shows the message and asks before committing:
-Enter commits, `e` opens your git editor, `r` writes a new one, `n` cancels. A git alias makes it
-feel built in: `git config --global alias.ai '!nib commit'`, then `git ai`.
+Prefer to stay in the terminal? `git nib` shows the message and asks before committing:
+Enter commits, `e` opens your git editor, `r` writes a new one, `n` cancels.
+It's the same as `nib commit`, and works from any folder in the repo.
 
 Prefer your editor? With the hook installed, `git commit` works as always, the message is just already there.
 `git commit -m "…"`, merges, amends and templates are left alone.
