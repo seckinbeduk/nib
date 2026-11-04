@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build nib and put it on your PATH.
-#   ./install.sh                  installs to /opt/homebrew/bin, or ~/.local/bin
+#   ./install.sh                  installs nib and git-nib to /opt/homebrew/bin, or ~/.local/bin
 #   PREFIX=/usr/local ./install.sh
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -23,7 +23,8 @@ else
 fi
 mkdir -p "$DEST"
 install -m 755 "$BIN" "$DEST/nib"
-echo "✅ Installed $DEST/nib"
+ln -sf nib "$DEST/git-nib"   # so `git nib` works
+echo "✅ Installed $DEST/nib (and git-nib, for \`git nib\`)"
 
 case ":$PATH:" in
   *":$DEST:"*) ;;
