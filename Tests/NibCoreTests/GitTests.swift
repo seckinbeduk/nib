@@ -43,6 +43,44 @@ struct GitTests {
         #expect(throws: NibError.notARepository) { try git.stagedDiff() }
     }
 
+    /// `run` blocks its caller until git is done. In parallel tests the callers are the
+    /// cooperative threads; once they are all blocked, the stderr drain must still run.
+    /// The blockers give up after 10 s on their own, so a regression fails this test
+    /// instead of hanging the whole run (`.timeLimit` can't fire then: it needs a free thread too).
+    @Test(.timeLimit(.minutes(1)))
+    func runFinishesWhileEveryCooperativeThreadIsBlocked() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let git = Git(directory: directory)
+        let blockers = max(ProcessInfo.processInfo.activeProcessorCount - 1, 1)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+
+        let elapsed = await withTaskGroup(of: Duration?.self) { group in
+            for _ in 0..<blockers {
+                group.addTask {
+                    started.signal()
+                    hold(release, until: .now() + 10)
+                    return nil
+                }
+            }
+            group.addTask {
+                let deadline = DispatchTime.now() + 10   // one deadline for all, not 10 s each
+                for _ in 0..<blockers { hold(started, until: deadline) }
+                let clock = ContinuousClock()
+                let start = clock.now
+                _ = try? git.run(["rev-parse", "--is-inside-work-tree"])
+                let elapsed = clock.now - start
+                for _ in 0..<blockers { release.signal() }
+                return elapsed
+            }
+            var elapsed = Duration.zero
+            for await value in group { if let value { elapsed = value } }
+            return elapsed
+        }
+        #expect(elapsed < .seconds(5), "git took \(elapsed) while every cooperative thread was blocked")
+    }
+
     @Test func notARepositoryMessagesMapToTheShortError() {
         for message in [
             "fatal: not a git repository (or any of the parent directories): .git",
@@ -69,4 +107,9 @@ struct GitTests {
         let error = Git.repositoryError(NibError.git(message))
         #expect(error as? NibError == .git(message))
     }
+}
+
+/// Blocks the calling thread on purpose, until `deadline` at the latest.
+private func hold(_ semaphore: DispatchSemaphore, until deadline: DispatchTime) {
+    _ = semaphore.wait(timeout: deadline)
 }

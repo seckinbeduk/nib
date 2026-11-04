@@ -29,10 +29,13 @@ public struct Git: Sendable {
         }
 
         // Drain stderr on another thread so a chatty git can't fill the pipe and stall.
+        // A thread of its own, not a GCD global queue: callers block on `drained`, and when they
+        // are Swift concurrency's cooperative threads (parallel tests) and all of them block,
+        // GCD never starts the drain and everything waits forever.
         let errorBuffer = DataBox()
         let errorHandle = stderr.fileHandleForReading
         let drained = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        Thread.detachNewThread {
             errorBuffer.data = errorHandle.readDataToEndOfFile()
             drained.signal()
         }
