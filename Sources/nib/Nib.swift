@@ -9,10 +9,23 @@ struct Nib: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "nib",
         abstract: "Commit messages written on your Mac by Apple Intelligence. Your code never leaves the machine.",
+        discussion: "As a git command, `git nib` writes the message, asks, and commits (same as `nib commit`).",
         version: "0.4.1",
         subcommands: [Generate.self, Commit.self, HookCommand.self, Doctor.self],
         defaultSubcommand: Generate.self
     )
+
+    /// Arguments that `git nib` passes on as they are: the subcommands and ArgumentParser's `help`.
+    static let passThrough = Set(configuration.subcommands.map { $0._commandName }).union(["help"])
+
+    /// Run as `git-nib` (for `git nib`), the arguments mean `nib commit …`; see `Invocation`.
+    static func main() async {
+        await main(Invocation.arguments(
+            executable: CommandLine.arguments.first ?? "nib",
+            arguments: Array(CommandLine.arguments.dropFirst()),
+            passThrough: passThrough
+        ))
+    }
 }
 
 struct MessageOptions: ParsableArguments {
@@ -215,6 +228,14 @@ struct Doctor: AsyncParsableCommand {
             }
         }
         row("engine", "\(engine.rawValue) → \(uses)")
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        let isExecutable = FileManager.default.isExecutableFile(atPath:)
+        if let gitNib = Invocation.find(Invocation.gitCommandName, inPath: path, isExecutable: isExecutable) {
+            row("git nib", "✓ \(gitNib)")
+        } else {
+            let nib = Invocation.find("nib", inPath: path, isExecutable: isExecutable)
+            row("git nib", Invocation.setupHint(nibDirectory: nib.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path }))
+        }
 
         guard git.isRepository() else {
             row("git repository", "– not in one (run nib inside a repo)")
@@ -350,7 +371,8 @@ enum Runner {
     }
 
     static func executablePath() -> String {
-        Bundle.main.executableURL?.path ?? "nib"
+        Invocation.hookBinaryPath(executable: Bundle.main.executableURL?.path ?? "nib",
+                                  isExecutable: FileManager.default.isExecutableFile(atPath:))
     }
 
     static func describe(_ error: Error) -> String {
