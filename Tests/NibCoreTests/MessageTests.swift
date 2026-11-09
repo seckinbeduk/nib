@@ -89,6 +89,22 @@ struct HintsTests {
         #expect(Hints.suggestedType(for: Fixture.files(Fixture.added("Sources/App.swift", lines: ["x"]), Fixture.added("README.md", lines: ["y"]))) == "feat")
     }
 
+    @Test func factsCountFilesLinesAndTests() {
+        let fix = Hints.facts(for: Fixture.files(Fixture.modified("Sources/App/Upload.swift"),
+                                                 Fixture.modified("Tests/AppTests/UploadTests.swift")))
+        #expect(fix == ["Facts:", "- 2 files changed: 2 modified (no new or deleted files)", "- 2 lines added, 2 removed",
+                        "- test files changed along with the source code"])
+        let feature = Hints.facts(for: Fixture.files(Fixture.added("Sources/App/Retry.swift", lines: ["a", "b", "c"]),
+                                                     Fixture.modified("Sources/App/Upload.swift"),
+                                                     Fixture.deleted("Sources/App/Old.swift", lines: 4)))
+        #expect(feature == ["Facts:", "- 3 files changed: 1 new, 1 modified, 1 deleted", "- 4 lines added, 5 removed",
+                            "- no test files changed"])
+        // Docs only: no line about tests. Noise is left out of the counts.
+        let docs = Hints.facts(for: Fixture.files(Fixture.modified("README.md"), Fixture.modified("Package.resolved")))
+        #expect(docs == ["Facts:", "- 1 file changed: 1 modified (no new or deleted files)", "- 1 line added, 1 removed"])
+        #expect(Hints.facts(for: []).isEmpty)
+    }
+
     // Build files with docs-like names are build, unless they live under docs/.
     @Test func buildFilesThatLookLikeDocsAreBuild() {
         func type(_ paths: String...) -> String? {

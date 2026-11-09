@@ -30,6 +30,35 @@ public enum Hints {
         }
     }
 
+    // MARK: Facts
+
+    /// Counts from the diff the model can't get wrong, as prompt lines. They help it tell a fix
+    /// (small edits to existing code, often with a test) from a feature (new files, mostly additions).
+    /// Noise (lockfiles, build output…) is left out; with nothing else left, every file counts.
+    public static func facts(for files: [FileDiff]) -> [String] {
+        let signal = files.filter { NoiseFilter.classify($0) == nil }
+        let used = signal.isEmpty ? files : signal
+        guard !used.isEmpty else { return [] }
+        let count = { (status: FileDiff.Status) in used.filter { $0.status == status }.count }
+        let added = count(.added), deleted = count(.deleted)
+        let changed = used.count - added - deleted
+        var parts: [String] = []
+        if added > 0 { parts.append("\(added) new") }
+        if changed > 0 { parts.append("\(changed) modified") }
+        if deleted > 0 { parts.append("\(deleted) deleted") }
+        let noun = used.count == 1 ? "file" : "files"
+        var lines = ["\(used.count) \(noun) changed: " + parts.joined(separator: ", ")
+                     + (added == 0 && deleted == 0 ? " (no new or deleted files)" : "")]
+        let additions = used.reduce(0) { $0 + $1.additions }, deletions = used.reduce(0) { $0 + $1.deletions }
+        lines.append("\(additions) \(additions == 1 ? "line" : "lines") added, \(deletions) removed")
+        let tests = used.filter { isTest($0.path) }
+        let source = used.filter { !isTest($0.path) && !isDocs($0.path) && !isBuild($0.path) && !isCI($0.path) }
+        if !source.isEmpty {
+            lines.append(tests.isEmpty ? "no test files changed" : "test files changed along with the source code")
+        }
+        return ["Facts:"] + lines.map { "- " + $0 }
+    }
+
     /// Anything under `docs/` is docs, build files there too (`docs/Makefile`, `docs/requirements.txt`).
     /// Elsewhere a build file is never docs, even with a docs-like name (`requirements.txt`, `CMakeLists.txt`).
     static func isDocs(_ path: String) -> Bool {

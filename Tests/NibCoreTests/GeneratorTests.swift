@@ -79,6 +79,7 @@ struct GeneratorTests {
         let model = FakeModel()
         _ = try await Generator(model: model).generate(diff: Fixture.modified("docs/guide.md"), settings: Settings())
         #expect(model.draftPrompts[0].contains("type is \"docs\""))
+        #expect(model.draftPrompts[0].contains("Facts:\n- 1 file changed: 1 modified"))
     }
 
     @Test func ticketAndStyleAreApplied() async throws {

@@ -134,7 +134,7 @@ public struct Generator: Sendable {
         let suggestedType = Hints.suggestedType(for: files)
         let scopeFiles = signal.isEmpty ? files : signal
         let suggestedScope = Hints.suggestedScope(for: scopeFiles)
-        let hints = Prompts.hintLines(type: suggestedType, scope: suggestedScope)
+        let hints = Prompts.hintLines(type: suggestedType, scope: suggestedScope) + Hints.facts(for: files)
         let composeInstructions = Prompts.composeInstructions(language: settings.language)
         var calls = 0
 
