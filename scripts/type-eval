@@ -1,0 +1,76 @@
+#!/bin/bash
+# Measures how often nib picks the commit type the author used. For the N most recent Conventional Commits in
+# the given repos (merges and release commits skipped), it stages exactly that commit's change on top of its
+# parent in a throwaway clone, asks nib for a message, and compares the type. Your repos are never touched.
+#
+#   swift build -c release
+#   scripts/type-eval                      # last 50 commits of this repo
+#   scripts/type-eval -n 30 ../app ../lib  # last 30 across other repos
+#   NIB=/opt/homebrew/bin/nib scripts/type-eval
+#
+# Prints accuracy, feat/fix recall, time per message and every miss; the full results are kept in a TSV.
+# Uses Apple Intelligence directly (--engine apple). One message takes a few seconds, so 50 take a few minutes.
+set -euo pipefail
+
+count=50
+while getopts "n:" opt; do
+  case $opt in
+    n) count=$OPTARG ;;
+    *) sed -n '2,12p' "$0"; exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+root=$(cd "$(dirname "$0")/.." && pwd)
+repos=("${@:-$root}")
+nib=${NIB:-$root/.build/release/nib}
+[[ -x $nib ]] || { echo "No nib at $nib. Run \`swift build -c release\` or set NIB." >&2; exit 1; }
+nib=$(cd "$(dirname "$nib")" && pwd)/$(basename "$nib")   # absolute: nib runs inside the clones
+
+work=$(mktemp -d -t nib-type-eval)
+trap 'rm -rf "$work/clones"' EXIT
+mkdir -p "$work/clones"
+list="$work/commits.txt"
+: > "$list"
+for repo in "${repos[@]}"; do
+  name=$(basename "$(cd "$repo" && pwd)")
+  git clone -q "$repo" "$work/clones/$name"
+  # "<time> <repo> <sha> <subject>", Conventional Commits only, no release commits.
+  git -C "$repo" log --no-merges --format="%ct $name %H %s" \
+    | grep -E '^[0-9]+ [^ ]+ [0-9a-f]+ [a-z]+(\([^)]*\))?!?: ' \
+    | grep -vE '^[0-9]+ [^ ]+ [0-9a-f]+ (chore(\(release\))?: (release|bump version)|release)' >> "$list" || true
+done
+# Not `sort | head`: with pipefail, head closing the pipe early would end the script with SIGPIPE.
+sort -rn "$list" > "$list.all"
+head -n "$count" "$list.all" > "$list.sorted"
+
+results="$work/results.tsv"
+: > "$results"
+now() { perl -MTime::HiRes=time -e 'printf "%.2f", time'; }
+total=$(wc -l < "$list.sorted" | tr -d ' ')
+index=0
+while read -r _ name sha subject; do
+  index=$((index + 1))
+  expected=${subject%%[(:!]*}
+  clone="$work/clones/$name"
+  git -C "$clone" rev-parse -q --verify "$sha^" > /dev/null || continue   # a root commit has no parent to diff against
+  git -C "$clone" checkout -q -f --detach "$sha"
+  git -C "$clone" reset -q --soft "$sha^"
+  start=$(now)
+  message=$(cd "$clone" && "$nib" generate --style conventional --language en --engine apple < /dev/null 2> /dev/null | head -1) || true
+  seconds=$(echo "$(now) - $start" | bc)
+  predicted=$(echo "$message" | sed -nE 's/^([a-z]+)(\([^)]*\))?!?: .*/\1/p')
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "${sha:0:7}" "$expected" "${predicted:-error}" "$seconds" "$message" >> "$results"
+  printf '\r%d/%d' "$index" "$total" >&2
+done < "$list.sorted"
+printf '\r' >&2
+
+n=$(wc -l < "$results" | tr -d ' ')
+[[ $n -gt 0 ]] || { echo "No commits measured."; exit 1; }
+awk -F'\t' '{ if ($3 == $4) ok++
+  if ($3 == "feat") { feat++; if ($4 == "feat") featok++ }
+  if ($3 == "fix") { fix++; if ($4 == "fix") fixok++ } }
+  END { printf "%d/%d right (%.0f%%)   feat %d/%d   fix %d/%d", ok, NR, 100 * ok / NR, featok, feat, fixok, fix }' "$results"
+cut -f5 "$results" | sort -n | awk -v n="$n" '{ t[NR] = $1 }
+  END { i = int(n * 0.9 + 0.5); if (i < 1) i = 1; printf "   median %.1fs   p90 %.1fs\n", t[int((n + 1) / 2)], t[i] }'
+awk -F'\t' '$3 != $4 { printf "  %-10s %s  %8s → %-8s %s\n", $1, $2, $3, $4, substr($6, 1, 70) }' "$results"
+echo "Results: $results"

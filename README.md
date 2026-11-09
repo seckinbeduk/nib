@@ -162,6 +162,8 @@ No Apple Intelligence on this Mac? Run Hearth with a local model and nib uses th
 ```sh
 swift build
 swift test
+scripts/type-eval   # how often nib picks the committed type, on this repo's last 50 Conventional Commits
+                    # (needs a release build and Apple Intelligence; takes a few minutes)
 ```
 
 `NibCore` holds everything that doesn't need the model (diff parsing, budgeting, prompts,
