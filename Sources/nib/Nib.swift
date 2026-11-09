@@ -71,7 +71,7 @@ struct Generate: AsyncParsableCommand {
 struct Commit: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Write the message, confirm it in the terminal, and commit.",
-        discussion: "Shows the message and asks: Enter to commit, e to edit it in your git editor, r to write a new one, n to cancel."
+        discussion: "Shows the message and asks: Enter to commit, e to edit it in your git editor, r to write a new one, t to pick another type (Conventional Commits only), n to cancel."
     )
 
     @OptionGroup var options: MessageOptions
@@ -91,9 +91,12 @@ struct Commit: AsyncParsableCommand {
             guard isatty(STDIN_FILENO) != 0 else {
                 throw ValidationError("Not running in a terminal. Use `nib commit -y` to commit without asking.")
             }
+            // Plain-style messages have no type to change.
+            let conventional = try Runner.settings(git: git, options: options).resolvedStyle != .plain
             ask: while true {
                 print("\n" + message.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(separator: "\n") + "\n")
-                print("Commit? [Y]es / [e]dit / [r]egenerate / [n]o: ", terminator: "")
+                let canChangeType = conventional && MessageFormatter.changingType(of: message, to: "feat") != nil
+                print("Commit? [Y]es / [e]dit / [r]egenerate" + (canChangeType ? " / [t]ype" : "") + " / [n]o: ", terminator: "")
                 let answer = (readLine() ?? "n").trimmingCharacters(in: .whitespaces).lowercased()
                 switch answer {
                 case "", "y", "yes":
@@ -103,6 +106,14 @@ struct Commit: AsyncParsableCommand {
                     return
                 case "r", "regenerate":
                     message = try await Runner.generate(git: git, options: options, log: log).message
+                case "t" where canChangeType, "type" where canChangeType:
+                    print(MessageFormatter.typeKeys.map { "\($0.key) \($0.type)" }.joined(separator: ", ") + ": ", terminator: "")
+                    let key = (readLine() ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+                    // Anything else keeps the message as it is and asks again.
+                    if let choice = MessageFormatter.typeKeys.first(where: { $0.key == key || $0.type == key }),
+                       let changed = MessageFormatter.changingType(of: message, to: choice.type) {
+                        message = changed
+                    }
                 default:
                     print("Nothing committed.")
                     return

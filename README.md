@@ -59,7 +59,7 @@ Run `nib doctor` to check everything is in place.
 ## Use
 
 ```sh
-git nib              # write the message, confirm in the terminal (Enter / e / r / n), commit
+git nib              # write the message, confirm in the terminal (Enter / e / r / t / n), commit
 git nib -y           # commit without asking
 nib                  # just print a message for the staged changes
 nib hook install     # from now on, `git commit` opens with the message already written
@@ -67,7 +67,10 @@ nib generate --plan  # show how a big diff would be split, without calling the m
 ```
 
 Prefer to stay in the terminal? `git nib` shows the message and asks before committing:
-Enter commits, `e` opens your git editor, `r` writes a new one, `n` cancels.
+Enter commits, `e` opens your git editor, `r` writes a new one, `t` picks another type, `n` cancels.
+The model sometimes says `feat` for a fix; `t` then `x` makes it `fix(scope): …` without calling the model again
+(`f` feat, `x` fix, `r` refactor, `p` perf, `d` docs, `t` test, `b` build, `c` ci, `h` chore, `s` style).
+There's no `t` for plain-style messages, which have no type.
 It's the same as `nib commit`, and works from any folder in the repo.
 
 Prefer your editor? With the hook installed, `git commit` works as always, the message is just already there.

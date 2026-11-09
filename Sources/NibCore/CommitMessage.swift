@@ -74,6 +74,34 @@ public enum MessageFormatter {
         return message
     }
 
+    // MARK: - Changing the type
+
+    /// The choices for `[t]ype` in `nib commit`, one key each.
+    public static let typeKeys: [(key: String, type: String)] = [
+        ("f", "feat"), ("x", "fix"), ("r", "refactor"), ("p", "perf"), ("d", "docs"),
+        ("t", "test"), ("b", "build"), ("c", "ci"), ("h", "chore"), ("s", "style"),
+    ]
+
+    /// `message` with its header's type replaced by `type`; scope, `!`, subject and body are kept
+    /// (a scope equal to the new type is dropped, and the subject is clipped only if a longer type
+    /// pushes the header past the limit).
+    /// Nil when the header isn't `type(scope): subject`, e.g. a plain-style message.
+    public static func changingType(of message: String, to type: String) -> String? {
+        var lines = message.components(separatedBy: "\n")
+        guard let header = lines.first, let regex = try? Regex("^[a-z]+(\\([^)]*\\))?!?: "),
+              let match = header.prefixMatch(of: regex),
+              allowedTypes.contains(String(header.prefix { $0.isLetter })) else { return nil }
+        var rest = header[match.range].drop { $0.isLetter }   // "(scope)!: "
+        // "docs(docs):" says nothing twice, as in `format`: drop a scope that is the new type.
+        if rest.hasPrefix("("), let close = rest.firstIndex(of: ")"),
+           rest[rest.index(after: rest.startIndex)..<close].lowercased() == type {
+            rest = rest[rest.index(after: close)...]
+        }
+        let prefix = type + rest
+        lines[0] = prefix + clip(String(header[match.range.upperBound...]), to: headerLimit - prefix.count)
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Cleanup
 
     /// "add track, detect, reflect, modify" or "add model clarity, error guidance, config clarity":
